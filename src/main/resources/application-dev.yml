@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/qliina_db
+    username: root_user
+    password: pass123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update   # will create tables automatically
+
+logging:
+  level:
+    com.jjenus.qliina_management: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: ERROR
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+server:
+  port: 8080
+  
+
+encryption:
+  secret: tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=
+  salt: f14ecc5ca42ba522a1f5a38df1564282
