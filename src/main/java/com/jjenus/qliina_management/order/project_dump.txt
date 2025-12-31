@@ -1,0 +1,2311 @@
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/controller/OrderController.java =====
+
+package com.jjenus.qliina_management.order.controller;
+
+import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.SuccessResponse;
+import com.jjenus.qliina_management.order.dto.*;
+import com.jjenus.qliina_management.order.service.OrderService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Tag(name = "Order Management", description = "Order management endpoints")
+@RestController
+@RequestMapping("/api/v1/{businessId}/orders")
+@RequiredArgsConstructor
+public class OrderController {
+    
+    private final OrderService orderService;
+    
+    @Operation(summary = "List orders", description = "Get paginated list of orders")
+    @GetMapping
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.view')")
+    public ResponseEntity<PageResponse<OrderSummaryDTO>> listOrders(
+            @PathVariable UUID businessId,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @ModelAttribute OrderFilter filter) {
+        return ResponseEntity.ok(orderService.listOrders(businessId, filter, pageable));
+    }
+    
+    @Operation(summary = "Get order", description = "Get order details by ID")
+    @GetMapping("/{orderId}")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.view')")
+    public ResponseEntity<OrderDetailDTO> getOrder(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId) {
+        return ResponseEntity.ok(orderService.getOrder(orderId));
+    }
+    
+    @Operation(summary = "Get order by tracking", description = "Get order details by tracking number")
+    @GetMapping("/tracking/{trackingNumber}")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.view')")
+    public ResponseEntity<OrderDetailDTO> getOrderByTracking(
+            @PathVariable UUID businessId,
+            @PathVariable String trackingNumber) {
+        return ResponseEntity.ok(orderService.getOrderByTrackingNumber(trackingNumber));
+    }
+    
+    @Operation(summary = "Create order", description = "Create a new order")
+    @PostMapping
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.create')")
+    public ResponseEntity<OrderDetailDTO> createOrder(
+            @PathVariable UUID businessId,
+            @Valid @RequestBody CreateOrderRequest request) {
+        return ResponseEntity.ok(orderService.createOrder(businessId, request));
+    }
+    
+    @Operation(summary = "Quick order", description = "Create a quick order with minimal information")
+    @PostMapping("/quick")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.create')")
+    public ResponseEntity<OrderDetailDTO> quickOrder(
+            @PathVariable UUID businessId,
+            @Valid @RequestBody QuickOrderRequest request) {
+        return ResponseEntity.ok(orderService.quickOrder(businessId, request));
+    }
+    
+    @Operation(summary = "Update order", description = "Update an existing order")
+    @PutMapping("/{orderId}")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.update')")
+    public ResponseEntity<OrderDetailDTO> updateOrder(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody UpdateOrderRequest request) {
+        return ResponseEntity.ok(orderService.updateOrder(orderId, request));
+    }
+    
+    @Operation(summary = "Cancel order", description = "Cancel an order")
+    @DeleteMapping("/{orderId}")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.delete')")
+    public ResponseEntity<SuccessResponse> cancelOrder(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody CancelOrderRequest request) {
+        orderService.cancelOrder(orderId, request);
+        return ResponseEntity.ok(SuccessResponse.of("Order cancelled successfully"));
+    }
+    
+    @Operation(summary = "Update order status", description = "Update order status")
+    @PostMapping("/{orderId}/status")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<OrderStatusDTO> updateOrderStatus(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody UpdateStatusRequest request) {
+        return ResponseEntity.ok(orderService.updateOrderStatus(orderId, request));
+    }
+    
+    @Operation(summary = "Update item status", description = "Update order item status")
+    @PostMapping("/{orderId}/items/{itemId}/status")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<OrderItemStatusDTO> updateItemStatus(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @PathVariable UUID itemId,
+            @Valid @RequestBody UpdateItemStatusRequest request) {
+        return ResponseEntity.ok(orderService.updateItemStatus(orderId, itemId, request));
+    }
+    
+    @Operation(summary = "Get order timeline", description = "Get order status timeline")
+    @GetMapping("/{orderId}/timeline")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.view')")
+    public ResponseEntity<List<TimelineEventDTO>> getOrderTimeline(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId) {
+        return ResponseEntity.ok(orderService.getOrderTimeline(orderId));
+    }
+    
+    @Operation(summary = "Add order note", description = "Add a note to an order")
+    @PostMapping("/{orderId}/notes")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.update')")
+    public ResponseEntity<OrderNoteDTO> addOrderNote(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody AddNoteRequest request) {
+        return ResponseEntity.ok(orderService.addOrderNote(orderId, request));
+    }
+    
+    @Operation(summary = "Upload attachment", description = "Upload an attachment to an order")
+    @PostMapping("/{orderId}/attachments")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.update')")
+    public ResponseEntity<AttachmentDTO> uploadAttachment(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("type") String type) {
+        // Implementation would handle file upload
+        return ResponseEntity.ok(new AttachmentDTO());
+    }
+    
+    @Operation(summary = "Get daily summary", description = "Get daily order summary")
+    @GetMapping("/daily-summary")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'report.view.operational')")
+    public ResponseEntity<DailyOrdersSummaryDTO> getDailySummary(
+            @PathVariable UUID businessId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime date) {
+        return ResponseEntity.ok(orderService.getDailyOrderSummary(businessId, date));
+    }
+    
+    @Operation(summary = "Transfer order", description = "Transfer order to another shop")
+    @PostMapping("/{orderId}/transfer")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.transfer')")
+    public ResponseEntity<OrderDetailDTO> transferOrder(
+            @PathVariable UUID businessId,
+            @PathVariable UUID orderId,
+            @Valid @RequestBody TransferOrderRequest request) {
+        return ResponseEntity.ok(orderService.transferOrder(orderId, request));
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/service/OrderService.java =====
+
+package com.jjenus.qliina_management.order.service;
+
+import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.customer.model.Customer;
+import com.jjenus.qliina_management.customer.repository.CustomerRepository;
+import com.jjenus.qliina_management.customer.service.CustomerService;
+import com.jjenus.qliina_management.identity.model.Shop;
+import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.identity.repository.UserRepository;
+import com.jjenus.qliina_management.order.dto.*;
+import com.jjenus.qliina_management.order.model.*;
+import com.jjenus.qliina_management.order.repository.OrderItemRepository;
+import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
+import com.jjenus.qliina_management.order.repository.OrderRepository;
+import com.jjenus.qliina_management.order.repository.OrderSpecifications;
+import com.jjenus.qliina_management.payment.service.PaymentService;
+import com.jjenus.qliina_management.quality.model.QualityCheck;
+import com.jjenus.qliina_management.quality.repository.QualityCheckRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.jjenus.qliina_management.identity.model.User;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final OrderPaymentRepository paymentRepository;
+    private final CustomerRepository customerRepository;
+    private final ShopRepository shopRepository;
+    private final UserRepository userRepository;
+    private final CustomerService customerService;
+    private final PaymentService paymentService;
+    private final QualityCheckRepository qualityCheckRepository;  // ADDED
+    
+    private UUID getCurrentUserId() {
+        try {
+            UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            return userRepository.findByUsername(userDetails.getUsername())
+                .map(User::getId)
+                .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private String getUserName(UUID userId) {
+        if (userId == null) return "System";
+        return userRepository.findById(userId)
+            .map(u -> u.getFirstName() + " " + u.getLastName())
+            .orElse("User " + userId.toString().substring(0, 8));
+    }
+    
+    @Transactional(readOnly = true)
+    public PageResponse<OrderSummaryDTO> listOrders(UUID businessId, OrderFilter filter, Pageable pageable) {
+        var specification = OrderSpecifications.withFilter(businessId, filter);
+        Page<Order> page = orderRepository.findAll(specification, pageable);
+        return PageResponse.from(page.map(this::mapToSummaryDTO));
+    }
+    
+    @Transactional(readOnly = true)
+    public OrderDetailDTO getOrder(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        return mapToDetailDTO(order);
+    }
+    
+    public Long countPendingOrders(UUID businessId, UUID shopId) {
+    return orderRepository.countPendingOrders(businessId, shopId);
+}
+
+public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime startDate, LocalDateTime endDate) {
+    return orderRepository.countOrdersByDateRange(businessId, shopId, startDate, endDate);
+}
+    
+    @Transactional(readOnly = true)
+    public OrderDetailDTO getOrderByTrackingNumber(String trackingNumber) {
+        Order order = orderRepository.findByTrackingNumber(trackingNumber)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        return mapToDetailDTO(order);
+    }
+    
+    @Transactional
+    public OrderDetailDTO createOrder(UUID businessId, CreateOrderRequest request) {
+        Order order = new Order();
+        order.setBusinessId(businessId);
+        order.setShopId(request.getShopId());
+        order.setCustomerId(request.getCustomerId());
+        order.setOrderNumber(generateOrderNumber(businessId));
+        order.setTrackingNumber(generateTrackingNumber());
+        order.setStatus(Order.OrderStatus.RECEIVED);
+        order.setPriority(request.getPriority() != null ? 
+            Order.Priority.valueOf(request.getPriority()) : Order.Priority.NORMAL);
+        order.setReceivedAt(LocalDateTime.now());
+        
+        if (request.getPromisedDate() != null) {
+            order.setPromisedDate(request.getPromisedDate());
+        }
+        
+        if (request.getExpectedReadyAt() != null) {
+            order.setExpectedReadyAt(request.getExpectedReadyAt());
+        }
+        
+        if (request.getTags() != null) {
+            order.setTags(new HashSet<>(request.getTags()));
+        }
+        
+        // Create order items
+        List<OrderItem> items = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        int itemCount = 0;
+        
+        for (CreateOrderRequest.ItemDTO itemDto : request.getItems()) {
+            OrderItem item = new OrderItem();
+            item.setOrder(order);
+            item.setItemNumber(generateItemNumber(order.getOrderNumber(), ++itemCount));
+            item.setServiceType(itemDto.getServiceTypeId().toString());
+            item.setGarmentType(itemDto.getGarmentTypeId() != null ? itemDto.getGarmentTypeId().toString() : null);
+            item.setDescription(itemDto.getDescription());
+            item.setQuantity(itemDto.getQuantity());
+            item.setWeight(itemDto.getWeight() != null ? BigDecimal.valueOf(itemDto.getWeight()) : null);
+            item.setUnitPrice(BigDecimal.valueOf(itemDto.getUnitPrice()));
+            
+            BigDecimal subtotal;
+            if (itemDto.getWeight() != null) {
+                subtotal = BigDecimal.valueOf(itemDto.getUnitPrice() * itemDto.getWeight());
+            } else {
+                subtotal = BigDecimal.valueOf(itemDto.getUnitPrice() * itemDto.getQuantity());
+            }
+            
+            item.setSubtotal(subtotal);
+            item.setDiscount(BigDecimal.ZERO);
+            item.setTotal(subtotal);
+            item.setStatus(OrderItem.ItemStatus.RECEIVED);
+            item.setSpecialInstructions(itemDto.getSpecialInstructions());
+            
+            if (itemDto.getImages() != null) {
+                item.setImages(new ArrayList<>(itemDto.getImages()));
+            }
+            
+            items.add(item);
+            totalAmount = totalAmount.add(subtotal);
+        }
+        
+        order.setItems(items);
+        order.setItemCount(items.size());
+        
+        // Apply discounts
+        if (request.getDiscounts() != null) {
+            for (CreateOrderRequest.DiscountDTO discountDto : request.getDiscounts()) {
+                if ("PERCENTAGE".equals(discountDto.getType())) {
+                    BigDecimal discountAmount = totalAmount.multiply(
+                        BigDecimal.valueOf(discountDto.getValue()).divide(BigDecimal.valueOf(100)));
+                    totalAmount = totalAmount.subtract(discountAmount);
+                } else {
+                    totalAmount = totalAmount.subtract(BigDecimal.valueOf(discountDto.getValue()));
+                }
+            }
+        }
+        
+        order.setTotalAmount(totalAmount);
+        order.setPaidAmount(BigDecimal.ZERO);
+        order.setBalanceDue(totalAmount);
+        
+        // Set delivery info
+        if (request.getDelivery() != null) {
+            DeliveryInfo deliveryInfo = new DeliveryInfo();
+            deliveryInfo.setType(request.getDelivery().getType());
+            deliveryInfo.setAddressId(request.getDelivery().getAddressId());
+            deliveryInfo.setScheduledTime(request.getDelivery().getScheduledTime());
+            order.setDeliveryInfo(deliveryInfo);
+        }
+        
+        // Create timeline entry
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("STATUS_CHANGE");
+        timeline.setStatus("RECEIVED");
+        timeline.setDescription("Order received");
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(getCurrentUserId());
+        timeline.setUserName(getUserName(getCurrentUserId()));
+        order.getTimeline().add(timeline);
+        
+        // Add note if provided
+        if (request.getNotes() != null && !request.getNotes().trim().isEmpty()) {
+            OrderNote note = new OrderNote();
+            note.setOrder(order);
+            note.setContent(request.getNotes());
+            note.setType("GENERAL");
+            note.setIsCustomerVisible(true);
+            order.getNotes().add(note);
+        }
+        
+        order = orderRepository.save(order);
+        
+        // Update customer metrics
+        customerService.updateCustomerFromOrder(request.getCustomerId(), totalAmount);
+        
+        return mapToDetailDTO(order);
+    }
+    
+    @Transactional
+    public OrderDetailDTO quickOrder(UUID businessId, QuickOrderRequest request) {
+        // Find or create customer by phone
+        Customer customer = customerRepository.findByBusinessIdAndPhone(businessId, request.getCustomerPhone())
+            .orElseGet(() -> {
+                Customer newCustomer = new Customer();
+                newCustomer.setBusinessId(businessId);
+                newCustomer.setFirstName("Guest");
+                newCustomer.setLastName("Customer");
+                newCustomer.setPhone(request.getCustomerPhone());
+                newCustomer.setEnabled(true);
+                return customerRepository.save(newCustomer);
+            });
+        
+        CreateOrderRequest createRequest = new CreateOrderRequest();
+        createRequest.setShopId(request.getShopId());
+        createRequest.setCustomerId(customer.getId());
+        createRequest.setItems(List.of(
+            CreateOrderRequest.ItemDTO.builder()
+                .serviceTypeId(UUID.nameUUIDFromBytes(request.getServiceType().getBytes()))
+                .quantity(request.getItemCount())
+                .unitPrice(request.getTotalAmount() / request.getItemCount())
+                .build()
+        ));
+        createRequest.setPriority("NORMAL");
+        createRequest.setNotes(request.getNotes());
+        
+        return createOrder(businessId, createRequest);
+    }
+    
+    @Transactional
+    public OrderDetailDTO updateOrder(UUID orderId, UpdateOrderRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        if (request.getPriority() != null) {
+            order.setPriority(Order.Priority.valueOf(request.getPriority()));
+        }
+        
+        if (request.getPromisedDate() != null) {
+            order.setPromisedDate(request.getPromisedDate());
+        }
+        
+        if (request.getTags() != null) {
+            order.setTags(new HashSet<>(request.getTags()));
+        }
+        
+        if (request.getDelivery() != null) {
+            DeliveryInfo deliveryInfo = order.getDeliveryInfo();
+            if (deliveryInfo == null) {
+                deliveryInfo = new DeliveryInfo();
+            }
+            deliveryInfo.setType(request.getDelivery().getType());
+            deliveryInfo.setAddressId(request.getDelivery().getAddressId());
+            deliveryInfo.setScheduledTime(request.getDelivery().getScheduledTime());
+            order.setDeliveryInfo(deliveryInfo);
+        }
+        
+        if (request.getNotes() != null && !request.getNotes().trim().isEmpty()) {
+            OrderNote note = new OrderNote();
+            note.setOrder(order);
+            note.setContent(request.getNotes());
+            note.setType("GENERAL");
+            note.setIsCustomerVisible(true);
+            order.getNotes().add(note);
+        }
+        
+        order = orderRepository.save(order);
+        return mapToDetailDTO(order);
+    }
+    
+    @Transactional
+    public void cancelOrder(UUID orderId, CancelOrderRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        if (order.getStatus() == Order.OrderStatus.COMPLETED) {
+            throw new BusinessException("Cannot cancel completed order", "ORDER_ALREADY_COMPLETED");
+        }
+        
+        order.setStatus(Order.OrderStatus.ARCHIVED);
+        
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("STATUS_CHANGE");
+        timeline.setStatus("CANCELLED");
+        timeline.setDescription(request.getReason());
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(getCurrentUserId());
+        timeline.setUserName(getUserName(getCurrentUserId()));
+        timeline.setMetadata(Map.of("reason", request.getReason(), "notes", request.getNotes()));
+        order.getTimeline().add(timeline);
+        
+        orderRepository.save(order);
+    }
+    
+    @Transactional
+    public OrderStatusDTO updateOrderStatus(UUID orderId, UpdateStatusRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        Order.OrderStatus previousStatus = order.getStatus();
+        Order.OrderStatus newStatus = Order.OrderStatus.valueOf(request.getStatus());
+        
+        // Validate status transition
+        validateStatusTransition(previousStatus, newStatus);
+        
+        order.setStatus(newStatus);
+        
+        if (newStatus == Order.OrderStatus.READY_FOR_PICKUP) {
+            order.setActualReadyAt(LocalDateTime.now());
+        } else if (newStatus == Order.OrderStatus.COMPLETED) {
+            order.setCompletedAt(LocalDateTime.now());
+        }
+        
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("STATUS_CHANGE");
+        timeline.setStatus(newStatus.toString());
+        timeline.setDescription(request.getNotes());
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(getCurrentUserId());
+        timeline.setUserName(getUserName(getCurrentUserId()));
+        order.getTimeline().add(timeline);
+        
+        order = orderRepository.save(order);
+        
+        return OrderStatusDTO.builder()
+            .orderId(order.getId())
+            .previousStatus(previousStatus.toString())
+            .currentStatus(newStatus.toString())
+            .updatedAt(LocalDateTime.now())
+            .updatedBy(getUserName(getCurrentUserId()))
+            .notes(request.getNotes())
+            .estimatedCompletion(order.getExpectedReadyAt())
+            .build();
+    }
+    
+    @Transactional
+    public OrderItemStatusDTO updateItemStatus(UUID orderId, UUID itemId, UpdateItemStatusRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        OrderItem item = order.getItems().stream()
+            .filter(i -> i.getId().equals(itemId))
+            .findFirst()
+            .orElseThrow(() -> new BusinessException("Order item not found", "ITEM_NOT_FOUND"));
+        
+        OrderItem.ItemStatus previousStatus = item.getStatus();
+        OrderItem.ItemStatus newStatus = OrderItem.ItemStatus.valueOf(request.getStatus());
+        
+        item.setStatus(newStatus);
+        
+        ItemStatusHistory history = new ItemStatusHistory();
+        history.setOrderItem(item);
+        history.setStatus(newStatus.toString());
+        history.setTimestamp(LocalDateTime.now());
+        history.setUpdatedBy(getCurrentUserId());
+        history.setNotes(request.getNotes());
+        item.getStatusHistory().add(history);
+        
+        orderRepository.save(order);
+        
+        return OrderItemStatusDTO.builder()
+            .itemId(itemId)
+            .previousStatus(previousStatus.toString())
+            .currentStatus(newStatus.toString())
+            .updatedAt(LocalDateTime.now())
+            .updatedBy(getUserName(getCurrentUserId()))
+            .notes(request.getNotes())
+            .build();
+    }
+    
+    @Transactional(readOnly = true)
+    public List<TimelineEventDTO> getOrderTimeline(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        return order.getTimeline().stream()
+            .map(event -> TimelineEventDTO.builder()
+                .id(event.getId())
+                .type(event.getType())
+                .status(event.getStatus())
+                .description(event.getDescription())
+                .timestamp(event.getTimestamp())
+                .userId(event.getUserId())
+                .userName(event.getUserName())
+                .metadata(event.getMetadata())
+                .build())
+            .collect(Collectors.toList());
+    }
+    
+    @Transactional
+    public OrderNoteDTO addOrderNote(UUID orderId, AddNoteRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        OrderNote note = new OrderNote();
+        note.setOrder(order);
+        note.setContent(request.getContent());
+        note.setType(request.getType());
+        note.setIsCustomerVisible(request.getIsCustomerVisible() != null ? request.getIsCustomerVisible() : false);
+        
+        order.getNotes().add(note);
+        orderRepository.save(order);
+        
+        return OrderNoteDTO.builder()
+            .id(note.getId())
+            .content(note.getContent())
+            .type(note.getType())
+            .createdBy(getUserName(getCurrentUserId()))
+            .createdAt(note.getCreatedAt())
+            .isCustomerVisible(note.getIsCustomerVisible())
+            .attachments(request.getAttachments())
+            .build();
+    }
+    
+    @Transactional(readOnly = true)
+    public DailyOrdersSummaryDTO getDailyOrderSummary(UUID businessId, LocalDateTime date) {
+        LocalDateTime startOfDay = date.toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1).minusNanos(1);
+        
+        List<Order> orders = orderRepository.findByDateRange(businessId, startOfDay, endOfDay, Pageable.unpaged())
+            .getContent();
+        
+        long totalOrders = orders.size();
+        long completedOrders = orders.stream()
+            .filter(o -> o.getStatus() == Order.OrderStatus.COMPLETED)
+            .count();
+        long pendingOrders = orders.stream()
+            .filter(o -> o.getStatus() != Order.OrderStatus.COMPLETED && 
+                        o.getStatus() != Order.OrderStatus.ARCHIVED)
+            .count();
+        
+        BigDecimal totalRevenue = orders.stream()
+            .map(Order::getTotalAmount)
+            .filter(Objects::nonNull)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        BigDecimal avgOrderValue = totalOrders > 0 ? 
+            totalRevenue.divide(BigDecimal.valueOf(totalOrders), 2, java.math.RoundingMode.HALF_UP) : 
+            BigDecimal.ZERO;
+        
+        Map<String, ServiceSummary> byServiceType = new HashMap<>();
+        Map<Integer, Integer> byHour = new HashMap<>();
+        
+        for (Order order : orders) {
+            int hour = order.getCreatedAt().getHour();
+            byHour.put(hour, byHour.getOrDefault(hour, 0) + 1);
+            
+            for (OrderItem item : order.getItems()) {
+                String serviceType = item.getServiceType();
+                ServiceSummary summary = byServiceType.getOrDefault(serviceType, 
+                    new ServiceSummary(serviceType, 0, BigDecimal.ZERO));
+                summary.setCount(summary.getCount() + 1);
+                summary.setRevenue(summary.getRevenue().add(item.getTotal()));
+                byServiceType.put(serviceType, summary);
+            }
+        }
+        
+        int peakHour = byHour.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse(0);
+        
+        return DailyOrdersSummaryDTO.builder()
+            .date(date.toLocalDate())
+            .totalOrders((int) totalOrders)
+            .completedOrders((int) completedOrders)
+            .pendingOrders((int) pendingOrders)
+            .totalRevenue(totalRevenue)
+            .averageOrderValue(avgOrderValue)
+            .byServiceType(byServiceType.values().stream()
+                .map(s -> DailyOrdersSummaryDTO.ServiceSummaryDTO.builder()
+                    .serviceType(s.getServiceType())
+                    .count(s.getCount())
+                    .revenue(s.getRevenue())
+                    .build())
+                .collect(Collectors.toList()))
+            .byHour(byHour.entrySet().stream()
+                .map(e -> DailyOrdersSummaryDTO.HourlyDTO.builder()
+                    .hour(e.getKey())
+                    .count(e.getValue())
+                    .build())
+                .sorted((a, b) -> Integer.compare(a.getHour(), b.getHour()))
+                .collect(Collectors.toList()))
+            .peakHour(peakHour)
+            .build();
+    }
+    
+    @Transactional
+    public OrderDetailDTO transferOrder(UUID orderId, TransferOrderRequest request) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        
+        UUID previousShopId = order.getShopId();
+        order.setShopId(request.getTargetShopId());
+        
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("TRANSFER");
+        timeline.setDescription(String.format("Order transferred from shop %s to %s. Reason: %s", 
+            previousShopId, request.getTargetShopId(), request.getReason()));
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(getCurrentUserId());
+        timeline.setUserName(getUserName(getCurrentUserId()));
+        timeline.setMetadata(Map.of(
+            "fromShop", previousShopId.toString(),
+            "toShop", request.getTargetShopId().toString(),
+            "reason", request.getReason()
+        ));
+        order.getTimeline().add(timeline);
+        
+        if (request.getTransferNotes() != null) {
+            OrderNote note = new OrderNote();
+            note.setOrder(order);
+            note.setContent(request.getTransferNotes());
+            note.setType("TRANSFER");
+            note.setIsCustomerVisible(false);
+            order.getNotes().add(note);
+        }
+        
+        order = orderRepository.save(order);
+        return mapToDetailDTO(order);
+    }
+    
+    private void validateStatusTransition(Order.OrderStatus from, Order.OrderStatus to) {
+        // Define allowed transitions
+        Map<Order.OrderStatus, List<Order.OrderStatus>> allowedTransitions = Map.of(
+            Order.OrderStatus.RECEIVED, List.of(Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.WASHING, List.of(Order.OrderStatus.WASHED, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.WASHED, List.of(Order.OrderStatus.IRONING, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.IRONING, List.of(Order.OrderStatus.IRONED, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.IRONED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.QUALITY_CHECK, List.of(Order.OrderStatus.READY_FOR_PICKUP, Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.READY_FOR_PICKUP, List.of(Order.OrderStatus.OUT_FOR_DELIVERY, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.OUT_FOR_DELIVERY, List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)
+        );
+        
+        List<Order.OrderStatus> allowed = allowedTransitions.get(from);
+        if (allowed == null || !allowed.contains(to)) {
+            throw new BusinessException(
+                String.format("Invalid status transition from %s to %s", from, to),
+                "INVALID_STATUS_TRANSITION"
+            );
+        }
+    }
+    
+    private String generateOrderNumber(UUID businessId) {
+        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String sequence = String.format("%04d", new Random().nextInt(10000));
+        return String.format("ORD-%s-%s-%s", businessId.toString().substring(0, 4), datePart, sequence);
+    }
+    
+    private String generateTrackingNumber() {
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String random = String.format("%06d", new Random().nextInt(1000000));
+        return "TRK" + timestamp.substring(timestamp.length() - 8) + random;
+    }
+    
+    private String generateItemNumber(String orderNumber, int sequence) {
+        return orderNumber + "-ITM-" + String.format("%03d", sequence);
+    }
+    
+    private OrderSummaryDTO mapToSummaryDTO(Order order) {
+        Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
+        Shop shop = shopRepository.findById(order.getShopId()).orElse(null);
+        
+        return OrderSummaryDTO.builder()
+            .id(order.getId())
+            .orderNumber(order.getOrderNumber())
+            .trackingNumber(order.getTrackingNumber())
+            .customer(OrderSummaryDTO.CustomerInfo.builder()
+                .id(order.getCustomerId())
+                .name(customer != null ? customer.getFirstName() + " " + customer.getLastName() : "Unknown")
+                .phone(customer != null ? customer.getPhone() : "")
+                .build())
+            .shop(OrderSummaryDTO.ShopInfo.builder()
+                .id(order.getShopId())
+                .name(shop != null ? shop.getName() : "Unknown")
+                .build())
+            .status(order.getStatus().toString())
+            .itemCount(order.getItemCount())
+            .totalAmount(order.getTotalAmount())
+            .paidAmount(order.getPaidAmount())
+            .balanceDue(order.getBalanceDue())
+            .priority(order.getPriority().toString())
+            .promisedDate(order.getPromisedDate())
+            .receivedAt(order.getReceivedAt())
+            .expectedReadyAt(order.getExpectedReadyAt())
+            .actualReadyAt(order.getActualReadyAt())
+            .completedAt(order.getCompletedAt())
+            .createdBy(getUserName(order.getCreatedBy()))
+            .createdAt(order.getCreatedAt())
+            .tags(new ArrayList<>(order.getTags()))
+            .build();
+    }
+    
+    private OrderDetailDTO mapToDetailDTO(Order order) {
+        OrderSummaryDTO summary = mapToSummaryDTO(order);
+        
+        List<OrderDetailDTO.ItemDTO> itemDTOs = order.getItems().stream()
+            .map(item -> {
+                List<OrderDetailDTO.ItemStatusHistoryDTO> historyDTOs = item.getStatusHistory().stream()
+                    .map(h -> OrderDetailDTO.ItemStatusHistoryDTO.builder()
+                        .status(h.getStatus())
+                        .timestamp(h.getTimestamp())
+                        .updatedBy(getUserName(h.getUpdatedBy()))
+                        .notes(h.getNotes())
+                        .build())
+                    .collect(Collectors.toList());
+                
+                // FIXED: Fetch QualityCheck separately using repository
+                OrderDetailDTO.QualityCheckDTO qualityCheckDTO = null;
+                Optional<QualityCheck> qualityCheckOpt = qualityCheckRepository.findByOrderItemId(item.getId());
+                if (qualityCheckOpt.isPresent()) {
+                    QualityCheck qualityCheck = qualityCheckOpt.get();
+                    qualityCheckDTO = OrderDetailDTO.QualityCheckDTO.builder()
+                        .status(qualityCheck.getStatus())
+                        .checkedBy(getUserName(qualityCheck.getCheckedBy()))
+                        .checkedAt(qualityCheck.getCheckedAt())
+                        .defects(qualityCheck.getDefects().stream()
+                            .map(d -> OrderDetailDTO.DefectDTO.builder()
+                                .id(d.getId())
+                                .type(d.getType())
+                                .severity(d.getSeverity())
+                                .description(d.getDescription())
+                                .images(d.getImages())
+                                .reportedBy(getUserName(d.getReportedBy()))
+                                .reportedAt(d.getReportedAt())
+                                .status(d.getStatus())
+                                .resolution(d.getResolution())
+                                .compensation(d.getCompensation())
+                                .compensationType(d.getCompensationType())
+                                .build())
+                            .collect(Collectors.toList()))
+                        .notes(qualityCheck.getNotes())
+                        .build();
+                }
+                
+                return OrderDetailDTO.ItemDTO.builder()
+                    .id(item.getId())
+                    .itemNumber(item.getItemNumber())
+                    .barcode(item.getBarcode())
+                    .serviceType(item.getServiceType())
+                    .garmentType(item.getGarmentType())
+                    .description(item.getDescription())
+                    .quantity(item.getQuantity())
+                    .weight(item.getWeight())
+                    .unitPrice(item.getUnitPrice())
+                    .subtotal(item.getSubtotal())
+                    .discount(item.getDiscount())
+                    .total(item.getTotal())
+                    .status(item.getStatus().toString())
+                    .specialInstructions(item.getSpecialInstructions())
+                    .images(item.getImages())
+                    .statusHistory(historyDTOs)
+                    .qualityCheck(qualityCheckDTO)
+                    .build();
+            })
+            .collect(Collectors.toList());
+        
+        List<OrderDetailDTO.PaymentDTO> paymentDTOs = paymentRepository.findByOrderId(order.getId())
+            .stream()
+            .map(p -> OrderDetailDTO.PaymentDTO.builder()
+                .id(p.getId())
+                .amount(p.getAmount())
+                .method(p.getMethod())
+                .reference(p.getReference())
+                .status(p.getStatus())
+                .paidAt(p.getPaidAt())
+                .collectedBy(getUserName(p.getCollectedBy()))
+                .tip(p.getTip())
+                .change(p.getChangeAmount())
+                .metadata(p.getMetadata())
+                .build())
+            .collect(Collectors.toList());
+        
+        List<OrderDetailDTO.OrderNoteDTO> noteDTOs = order.getNotes().stream()
+            .map(n -> OrderDetailDTO.OrderNoteDTO.builder()
+                .id(n.getId())
+                .content(n.getContent())
+                .type(n.getType())
+                .createdBy(getUserName(n.getCreatedBy()))
+                .createdAt(n.getCreatedAt())
+                .isCustomerVisible(n.getIsCustomerVisible())
+                .attachments(new ArrayList<>())
+                .build())
+            .collect(Collectors.toList());
+        
+        List<TimelineEventDTO> timelineDTOs = order.getTimeline().stream()
+            .map(t -> TimelineEventDTO.builder()
+                .id(t.getId())
+                .type(t.getType())
+                .status(t.getStatus())
+                .description(t.getDescription())
+                .timestamp(t.getTimestamp())
+                .userId(t.getUserId())
+                .userName(t.getUserName())
+                .metadata(t.getMetadata())
+                .build())
+            .collect(Collectors.toList());
+        
+        OrderDetailDTO.DeliveryInfoDTO deliveryDTO = null;
+        if (order.getDeliveryInfo() != null) {
+            deliveryDTO = OrderDetailDTO.DeliveryInfoDTO.builder()
+                .type(order.getDeliveryInfo().getType())
+                .address(null)
+                .scheduledTime(order.getDeliveryInfo().getScheduledTime())
+                .deliveredAt(order.getDeliveryInfo().getDeliveredAt())
+                .deliveredBy(getUserName(order.getDeliveryInfo().getDeliveredBy()))
+                .proofOfDelivery(order.getDeliveryInfo().getProofOfDelivery())
+                .recipientName(order.getDeliveryInfo().getRecipientName())
+                .notes(order.getDeliveryInfo().getNotes())
+                .build();
+        }
+        
+        OrderDetailDTO.MetadataDTO metadata = OrderDetailDTO.MetadataDTO.builder()
+            .createdBy(order.getCreatedBy())
+            .createdAt(order.getCreatedAt())
+            .updatedBy(order.getUpdatedBy())
+            .updatedAt(order.getUpdatedAt())
+            .ipAddress(null)
+            .userAgent(null)
+            .build();
+        
+        return OrderDetailDTO.builder()
+            .id(summary.getId())
+            .orderNumber(summary.getOrderNumber())
+            .trackingNumber(summary.getTrackingNumber())
+            .customer(summary.getCustomer())
+            .shop(summary.getShop())
+            .status(summary.getStatus())
+            .itemCount(summary.getItemCount())
+            .totalAmount(summary.getTotalAmount())
+            .paidAmount(summary.getPaidAmount())
+            .balanceDue(summary.getBalanceDue())
+            .priority(summary.getPriority())
+            .promisedDate(summary.getPromisedDate())
+            .receivedAt(summary.getReceivedAt())
+            .expectedReadyAt(summary.getExpectedReadyAt())
+            .actualReadyAt(summary.getActualReadyAt())
+            .completedAt(summary.getCompletedAt())
+            .createdBy(summary.getCreatedBy())
+            .createdAt(summary.getCreatedAt())
+            .tags(summary.getTags())
+            .items(itemDTOs)
+            .discounts(new ArrayList<>())
+            .payments(paymentDTOs)
+            .delivery(deliveryDTO)
+            .notes(noteDTOs)
+            .timeline(timelineDTOs)
+            .metadata(metadata)
+            .build();
+    }
+    
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    private static class ServiceSummary {
+        private final String serviceType;
+        private int count;
+        private BigDecimal revenue;
+    }
+}
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/repository/OrderRepository.java =====
+
+package com.jjenus.qliina_management.order.repository;
+
+import com.jjenus.qliina_management.order.model.Order;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
+
+    Optional<Order> findByOrderNumber(String orderNumber);
+
+    Optional<Order> findByTrackingNumber(String trackingNumber);
+
+    Page<Order> findByCustomerId(UUID customerId, Pageable pageable);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.createdBy = :employeeId AND FUNCTION('DATE', o.createdAt) = :date")
+    Integer countByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
+                                     @Param("date") LocalDate date);
+
+    @Query("SELECT SUM(oi.quantity) FROM OrderItem oi WHERE oi.order.createdBy = :employeeId AND FUNCTION('DATE', oi.order.createdAt) = :date")
+    Integer countItemsByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
+                                          @Param("date") LocalDate date);
+
+    @Query("SELECT SUM(oi.quantity) FROM OrderItem oi WHERE oi.order.createdBy = :employeeId AND oi.order.createdAt BETWEEN :startDate AND :endDate")
+    Integer countItemsByEmployeeIdAndDateRange(@Param("employeeId") UUID employeeId,
+                                               @Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.createdBy = :employeeId AND o.createdAt BETWEEN :startDate AND :endDate")
+    BigDecimal sumRevenueByEmployeeIdAndDateRange(@Param("employeeId") UUID employeeId,
+                                                  @Param("startDate") LocalDateTime startDate,
+                                                  @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT o FROM Order o WHERE o.businessId = :businessId AND o.status NOT IN ('COMPLETED', 'ARCHIVED')")
+    List<Order> findUnpaidOrders(@Param("businessId") UUID businessId);
+
+    @Query("SELECT SUM(o.balanceDue) FROM Order o WHERE o.businessId = :businessId AND (:shopId IS NULL OR o.shopId = :shopId)")
+    BigDecimal sumOutstandingBalance(@Param("businessId") UUID businessId,
+                                     @Param("shopId") UUID shopId);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.businessId = :businessId AND (:shopId IS NULL OR o.shopId = :shopId) AND o.status NOT IN ('COMPLETED', 'ARCHIVED')")
+    Long countPendingOrders(@Param("businessId") UUID businessId,
+                            @Param("shopId") UUID shopId);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.businessId = :businessId AND (:shopId IS NULL OR o.shopId = :shopId) AND o.createdAt BETWEEN :startDate AND :endDate")
+    Long countOrdersByDateRange(@Param("businessId") UUID businessId,
+                                @Param("shopId") UUID shopId,
+                                @Param("startDate") LocalDateTime startDate,
+                                @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT o FROM Order o WHERE o.businessId = :businessId AND o.shopId = :shopId")
+    Page<Order> findByBusinessIdAndShopId(@Param("businessId") UUID businessId,
+                                          @Param("shopId") UUID shopId,
+                                          Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.businessId = :businessId")
+    Page<Order> findByBusinessId(@Param("businessId") UUID businessId,
+                                 Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.businessId = :businessId AND o.status = :status")
+    Page<Order> findByStatus(@Param("businessId") UUID businessId,
+                             @Param("status") Order.OrderStatus status,
+                             Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate")
+    Page<Order> findByDateRange(@Param("businessId") UUID businessId,
+                                @Param("startDate") LocalDateTime startDate,
+                                @Param("endDate") LocalDateTime endDate,
+                                Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.customerId = :customerId AND o.invoiceId IS NULL AND o.createdAt BETWEEN :startDate AND :endDate")
+    List<Order> findUnpaidOrdersByCustomerAndDateRange(@Param("customerId") UUID customerId,
+                                                       @Param("startDate") LocalDateTime startDate,
+                                                       @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate")
+    BigDecimal sumRevenueByDateRange(@Param("businessId") UUID businessId,
+                                     @Param("startDate") LocalDateTime startDate,
+                                     @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.businessId = :businessId AND FUNCTION('DATE', o.createdAt) = CURRENT_DATE")
+    Long countTodayOrders(@Param("businessId") UUID businessId);
+
+    @Query("SELECT o.customerId, SUM(o.totalAmount) as total, COUNT(o) as count, AVG(o.totalAmount) as avg " +
+            "FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate " +
+            "GROUP BY o.customerId ORDER BY total DESC")
+    Page<Object[]> findTopCustomersBySpend(@Param("businessId") UUID businessId,
+                                           @Param("startDate") LocalDateTime startDate,
+                                           @Param("endDate") LocalDateTime endDate,
+                                           Pageable pageable);
+
+    @Query("SELECT o.customerId, COUNT(o) as count, SUM(o.totalAmount) as total " +
+            "FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate " +
+            "GROUP BY o.customerId ORDER BY count DESC")
+    Page<Object[]> findTopCustomersByFrequency(@Param("businessId") UUID businessId,
+                                               @Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate,
+                                               Pageable pageable);
+
+    @Query("SELECT o.customerId, AVG(o.totalAmount) as avg, COUNT(o) as count, SUM(o.totalAmount) as total " +
+            "FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate " +
+            "GROUP BY o.customerId ORDER BY avg DESC")
+    Page<Object[]> findTopCustomersByAOV(@Param("businessId") UUID businessId,
+                                         @Param("startDate") LocalDateTime startDate,
+                                         @Param("endDate") LocalDateTime endDate,
+                                         Pageable pageable);
+
+    @Query("SELECT FUNCTION('DATE', o.createdAt), COUNT(o), SUM(o.totalAmount) " +
+            "FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate " +
+            "GROUP BY FUNCTION('DATE', o.createdAt) ORDER BY FUNCTION('DATE', o.createdAt)")
+    List<Object[]> getDailyOrderSummary(@Param("businessId") UUID businessId,
+                                        @Param("startDate") LocalDateTime startDate,
+                                        @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT FUNCTION('HOUR', o.createdAt), COUNT(o) " +
+            "FROM Order o WHERE o.businessId = :businessId AND FUNCTION('DATE', o.createdAt) = :date " +
+            "GROUP BY FUNCTION('HOUR', o.createdAt) ORDER BY FUNCTION('HOUR', o.createdAt)")
+    List<Object[]> getHourlyDistribution(@Param("businessId") UUID businessId,
+                                         @Param("date") LocalDateTime date);
+
+    @Query("SELECT o FROM Order o WHERE o.customerId = :customerId")
+    List<Order> findByCustomerId(@Param("customerId") UUID customerId);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.createdBy = :employeeId AND o.createdAt BETWEEN :startDate AND :endDate")
+    Integer countByEmployeeIdAndDateRange(@Param("employeeId") UUID employeeId,
+                                          @Param("startDate") LocalDateTime startDate,
+                                          @Param("endDate") LocalDateTime endDate);
+}
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/repository/OrderSpecifications.java =====
+
+package com.jjenus.qliina_management.order.repository;
+
+import com.jjenus.qliina_management.order.dto.OrderFilter;
+import com.jjenus.qliina_management.order.model.Order;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.jpa.domain.Specification;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.math.BigDecimal;
+
+public class OrderSpecifications {
+    
+    public static Specification<Order> withFilter(UUID businessId, OrderFilter filter) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            
+            predicates.add(cb.equal(root.get("businessId"), businessId));
+            
+            if (filter == null) {
+                return cb.and(predicates.toArray(new Predicate[0]));
+            }
+            
+            if (filter.getShopId() != null) {
+                predicates.add(cb.equal(root.get("shopId"), filter.getShopId()));
+            }
+            
+            if (filter.getCustomerId() != null) {
+                predicates.add(cb.equal(root.get("customerId"), filter.getCustomerId()));
+            }
+            
+            if (filter.getStatus() != null && !filter.getStatus().isEmpty()) {
+                predicates.add(root.get("status").in(filter.getStatus()));
+            }
+            
+            if (filter.getFromDate() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), filter.getFromDate()));
+            }
+            
+            if (filter.getToDate() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), filter.getToDate()));
+            }
+            
+            if (filter.getMinAmount() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("totalAmount"), filter.getMinAmount()));
+            }
+            
+            if (filter.getMaxAmount() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("totalAmount"), filter.getMaxAmount()));
+            }
+            
+            if (filter.getPaymentStatus() != null) {
+                switch (filter.getPaymentStatus()) {
+                    case "PAID":
+                        predicates.add(cb.equal(root.get("balanceDue"), BigDecimal.ZERO));
+                        break;
+                    case "UNPAID":
+                        predicates.add(cb.equal(root.get("paidAmount"), BigDecimal.ZERO));
+                        break;
+                    case "PARTIAL":
+                        predicates.add(cb.greaterThan(root.get("paidAmount"), BigDecimal.ZERO));
+                        predicates.add(cb.greaterThan(root.get("balanceDue"), BigDecimal.ZERO));
+                        break;
+                }
+            }
+            
+            if (filter.getPriority() != null) {
+                predicates.add(cb.equal(root.get("priority"), Order.Priority.valueOf(filter.getPriority())));
+            }
+            
+            if (filter.getTag() != null) {
+                predicates.add(cb.isMember(filter.getTag(), root.get("tags")));
+            }
+            
+            if (filter.getHasIssue() != null && filter.getHasIssue()) {
+                predicates.add(cb.isNotEmpty(root.get("items").get("defects")));
+            }
+            
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/repository/OrderItemRepository.java =====
+
+package com.jjenus.qliina_management.order.repository;
+
+import com.jjenus.qliina_management.order.model.OrderItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
+    
+    List<OrderItem> findByOrderId(UUID orderId);
+    
+    @Query("SELECT oi FROM OrderItem oi WHERE oi.order.businessId = :businessId AND oi.barcode = :barcode")
+    OrderItem findByBusinessIdAndBarcode(@Param("businessId") UUID businessId, @Param("barcode") String barcode);
+    
+    @Query("SELECT COUNT(oi) FROM OrderItem oi WHERE oi.order.shopId = :shopId AND oi.status = :status")
+    Long countByShopIdAndStatus(@Param("shopId") UUID shopId, @Param("status") OrderItem.ItemStatus status);
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/OrderItem.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import com.jjenus.qliina_management.common.BaseEntity;
+import com.jjenus.qliina_management.quality.model.QualityCheck;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "order_items")
+@Getter
+@Setter
+public class OrderItem extends BaseEntity {
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+    
+    @Column(name = "item_number", nullable = false)
+    private String itemNumber;
+    
+    @Column(name = "barcode")
+    private String barcode;
+    
+    @Column(name = "service_type", nullable = false)
+    private String serviceType;
+    
+    @Column(name = "garment_type")
+    private String garmentType;
+    
+    @Column(name = "description")
+    private String description;
+    
+    @Column(name = "quantity", nullable = false)
+    private Integer quantity;
+    
+    @Column(name = "weight", precision = 10, scale = 2)
+    private BigDecimal weight;
+    
+    @Column(name = "unit_price", precision = 10, scale = 2)
+    private BigDecimal unitPrice;
+    
+    @Column(name = "subtotal", precision = 10, scale = 2)
+    private BigDecimal subtotal;
+    
+    @Column(name = "discount", precision = 10, scale = 2)
+    private BigDecimal discount;
+    
+    @Column(name = "total", precision = 10, scale = 2)
+    private BigDecimal total;
+    
+    @Column(name = "status")
+    @Enumerated(EnumType.STRING)
+    private ItemStatus status;
+    
+    @Column(name = "special_instructions")
+    private String specialInstructions;
+    
+    @ElementCollection
+    @CollectionTable(name = "item_images", joinColumns = @JoinColumn(name = "item_id"))
+    @Column(name = "image_url")
+    private List<String> images = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("timestamp DESC")
+    private List<ItemStatusHistory> statusHistory = new ArrayList<>();
+    
+    public enum ItemStatus {
+        PENDING, RECEIVED, WASHING, WASHED, IRONING, IRONED, 
+        QUALITY_CHECK, COMPLETED, ISSUE_REPORTED
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/ItemStatusHistory.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import com.jjenus.qliina_management.common.BaseEntity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "item_status_history")
+@Getter
+@Setter
+public class ItemStatusHistory extends BaseEntity {
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "item_id", nullable = false)
+    private OrderItem orderItem;
+    
+    @Column(name = "status", nullable = false)
+    private String status;
+    
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp;
+    
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+    
+    @Column(name = "notes")
+    private String notes;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/OrderNote.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import com.jjenus.qliina_management.common.BaseEntity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "order_notes")
+@Getter
+@Setter
+public class OrderNote extends BaseEntity {
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+    
+    @Column(name = "content", nullable = false, length = 2000)
+    private String content;
+    
+    @Column(name = "type")
+    private String type;
+    
+    @Column(name = "is_customer_visible")
+    private Boolean isCustomerVisible = false;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/OrderTimeline.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import com.jjenus.qliina_management.common.BaseEntity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+@Entity
+@Table(name = "order_timeline")
+@Getter
+@Setter
+public class OrderTimeline extends BaseEntity {
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+    
+    @Column(name = "type", nullable = false)
+    private String type;
+    
+    @Column(name = "status")
+    private String status;
+    
+    @Column(name = "description")
+    private String description;
+    
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp;
+    
+    @Column(name = "user_id")
+    private UUID userId;
+    
+    @Column(name = "user_name")
+    private String userName;
+    
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> metadata;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/DeliveryInfo.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Embeddable
+@Getter
+@Setter
+public class DeliveryInfo {
+    
+    @Column(name = "delivery_type")
+    private String type;
+    
+    @Column(name = "delivery_address_id")
+    private UUID addressId;
+    
+    @Column(name = "scheduled_time")
+    private LocalDateTime scheduledTime;
+    
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+    
+    @Column(name = "delivered_by")
+    private UUID deliveredBy;
+    
+    @Column(name = "proof_of_delivery")
+    private String proofOfDelivery;
+    
+    @Column(name = "recipient_name")
+    private String recipientName;
+    
+    @Column(name = "delivery_notes")
+    private String notes;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/model/Order.java =====
+
+package com.jjenus.qliina_management.order.model;
+
+import com.jjenus.qliina_management.common.BaseTenantEntity;
+import com.jjenus.qliina_management.payment.model.OrderPayment;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
+
+@Entity
+@Table(name = "orders", indexes = {
+    @Index(name = "idx_order_number", columnList = "orderNumber", unique = true),
+    @Index(name = "idx_order_tracking", columnList = "trackingNumber", unique = true),
+    @Index(name = "idx_order_customer", columnList = "customerId"),
+    @Index(name = "idx_order_status", columnList = "status"),
+    @Index(name = "idx_order_dates", columnList = "receivedAt")
+})
+@Getter
+@Setter
+public class Order extends BaseTenantEntity {
+    
+    @Column(name = "order_number", nullable = false, unique = true)
+    private String orderNumber;
+    
+    @Column(name = "tracking_number", nullable = false, unique = true)
+    private String trackingNumber;
+    
+    @Column(name = "customer_id", nullable = false)
+    private UUID customerId;
+    
+    @Column(name = "invoice_id")
+    private UUID invoiceId;
+    
+    @Column(name = "status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
+    
+    @Column(name = "priority")
+    @Enumerated(EnumType.STRING)
+    private Priority priority = Priority.NORMAL;
+    
+    @Column(name = "item_count")
+    private Integer itemCount;
+    
+    @Column(name = "total_amount", precision = 10, scale = 2)
+    private BigDecimal totalAmount;
+    
+    @Column(name = "paid_amount", precision = 10, scale = 2)
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+    
+    @Column(name = "balance_due", precision = 10, scale = 2)
+    private BigDecimal balanceDue;
+    
+    @Column(name = "received_at")
+    private LocalDateTime receivedAt;
+    
+    @Column(name = "expected_ready_at")
+    private LocalDateTime expectedReadyAt;
+    
+    @Column(name = "actual_ready_at")
+    private LocalDateTime actualReadyAt;
+    
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+    
+    @Column(name = "promised_date")
+    private LocalDateTime promisedDate;
+    
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("createdAt ASC")
+    private List<OrderItem> items = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("createdAt DESC")
+    private List<OrderNote> notes = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("timestamp ASC")
+    private List<OrderTimeline> timeline = new ArrayList<>();
+    
+    @ElementCollection
+    @CollectionTable(name = "order_tags", joinColumns = @JoinColumn(name = "order_id"))
+    @Column(name = "tag")
+    private Set<String> tags = new HashSet<>();
+    
+    @Embedded
+    private DeliveryInfo deliveryInfo;
+    
+    public void markReady() {
+        if (status != OrderStatus.QUALITY_CHECK) {
+            throw new IllegalStateException("Order must pass quality check first");
+        }
+        this.status = OrderStatus.READY_FOR_PICKUP;
+        this.actualReadyAt = LocalDateTime.now();
+    }
+    
+    public void markCompleted() {
+        if (status != OrderStatus.READY_FOR_PICKUP && status != OrderStatus.OUT_FOR_DELIVERY) {
+            throw new IllegalStateException("Order must be ready for pickup or out for delivery");
+        }
+        this.status = OrderStatus.COMPLETED;
+        this.completedAt = LocalDateTime.now();
+    }
+    
+    public void addPayment(BigDecimal amount) {
+        this.paidAmount = this.paidAmount.add(amount);
+        this.balanceDue = this.totalAmount.subtract(this.paidAmount);
+    }
+    
+    public enum OrderStatus {
+        DRAFT, RECEIVED, WASHING, WASHED, IRONING, IRONED, 
+        QUALITY_CHECK, READY_FOR_PICKUP, OUT_FOR_DELIVERY, 
+        COMPLETED, ARCHIVED
+    }
+    
+    public enum Priority {
+        NORMAL, EXPRESS, URGENT
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderFilter.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.Data;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+public class OrderFilter {
+    private UUID customerId;
+    private UUID shopId;
+    private List<String> status;
+    private LocalDateTime fromDate;
+    private LocalDateTime toDate;
+    private Double minAmount;
+    private Double maxAmount;
+    private String paymentStatus;
+    private List<String> serviceType;
+    private UUID assignedTo;
+    private String priority;
+    private String tag;
+    private Boolean hasIssue;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderSummaryDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.experimental.SuperBuilder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderSummaryDTO {
+    private UUID id;
+    private String orderNumber;
+    private String trackingNumber;
+    private CustomerInfo customer;
+    private ShopInfo shop;
+    private String status;
+    private Integer itemCount;
+    private BigDecimal totalAmount;
+    private BigDecimal paidAmount;
+    private BigDecimal balanceDue;
+    private String priority;
+    private LocalDateTime promisedDate;
+    private LocalDateTime receivedAt;
+    private LocalDateTime expectedReadyAt;
+    private LocalDateTime actualReadyAt;
+    private LocalDateTime completedAt;
+    private String createdBy;
+    private LocalDateTime createdAt;
+    private List<String> tags;
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CustomerInfo {
+        private UUID id;
+        private String name;
+        private String phone;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ShopInfo {
+        private UUID id;
+        private String name;
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderDetailDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import com.jjenus.qliina_management.common.AddressDTO;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class OrderDetailDTO extends OrderSummaryDTO {
+    private List<ItemDTO> items;
+    private List<DiscountDTO> discounts;
+    private List<PaymentDTO> payments;
+    private DeliveryInfoDTO delivery;
+    private List<OrderNoteDTO> notes;
+    private List<AttachmentDTO> attachments;
+    private List<TimelineEventDTO> timeline;
+    private MetadataDTO metadata;
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ItemDTO {
+        private UUID id;
+        private String itemNumber;
+        private String barcode;
+        private String serviceType;
+        private String garmentType;
+        private String description;
+        private Integer quantity;
+        private BigDecimal weight;
+        private BigDecimal unitPrice;
+        private BigDecimal subtotal;
+        private BigDecimal discount;
+        private BigDecimal total;
+        private String status;
+        private String specialInstructions;
+        private List<String> images;
+        private List<ItemStatusHistoryDTO> statusHistory;
+        private QualityCheckDTO qualityCheck;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ItemStatusHistoryDTO {
+        private String status;
+        private LocalDateTime timestamp;
+        private String updatedBy;
+        private String notes;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class QualityCheckDTO {
+        private String status;
+        private String checkedBy;
+        private LocalDateTime checkedAt;
+        private List<DefectDTO> defects;
+        private String notes;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DefectDTO {
+        private UUID id;
+        private String type;
+        private String severity;
+        private String description;
+        private List<String> images;
+        private String reportedBy;
+        private LocalDateTime reportedAt;
+        private String status;
+        private String resolution;
+        private BigDecimal compensation;
+        private String compensationType;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DiscountDTO {
+        private String type;
+        private Double value;
+        private String reason;
+        private String promoCode;
+        private String approvedBy;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PaymentDTO {
+        private UUID id;
+        private BigDecimal amount;
+        private String method;
+        private String reference;
+        private String status;
+        private LocalDateTime paidAt;
+        private String collectedBy;
+        private BigDecimal tip;
+        private BigDecimal change;
+        private Map<String, Object> metadata;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeliveryInfoDTO {
+        private String type;
+        private AddressDTO address;
+        private LocalDateTime scheduledTime;
+        private LocalDateTime deliveredAt;
+        private String deliveredBy;
+        private String proofOfDelivery;
+        private String recipientName;
+        private String notes;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class OrderNoteDTO {
+        private UUID id;
+        private String content;
+        private String type;
+        private String createdBy;
+        private LocalDateTime createdAt;
+        private Boolean isCustomerVisible;
+        private List<String> attachments;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AttachmentDTO {
+        private UUID id;
+        private String fileName;
+        private String fileType;
+        private Long fileSize;
+        private String url;
+        private String uploadedBy;
+        private LocalDateTime uploadedAt;
+        private String type;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MetadataDTO {
+        private UUID createdBy;
+        private LocalDateTime createdAt;
+        private UUID updatedBy;
+        private LocalDateTime updatedAt;
+        private String ipAddress;
+        private String userAgent;
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/CreateOrderRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CreateOrderRequest {
+    @NotNull(message = "Customer ID is required")
+    private UUID customerId;
+    
+    @NotNull(message = "Shop ID is required")
+    private UUID shopId;
+    
+    @NotNull(message = "Items are required")
+    private List<ItemDTO> items;
+    
+    private List<DiscountDTO> discounts;
+    
+    private String priority;
+    
+    private LocalDateTime promisedDate;
+    
+    private LocalDateTime expectedReadyAt;
+    
+    private DeliveryDTO delivery;
+    
+    private String notes;
+    
+    private List<String> tags;
+    
+    private Boolean sendNotifications;
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ItemDTO {
+        @NotNull(message = "Service type ID is required")
+        private UUID serviceTypeId;
+        
+        private UUID garmentTypeId;
+        
+        private String description;
+        
+        @NotNull(message = "Quantity is required")
+        private Integer quantity;
+        
+        private Double weight;
+        
+        @NotNull(message = "Unit price is required")
+        private Double unitPrice;
+        
+        private String specialInstructions;
+        
+        private List<String> images;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DiscountDTO {
+        private String type;
+        private Double value;
+        private String reason;
+        private String promoCode;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeliveryDTO {
+        private String type;
+        private UUID addressId;
+        private LocalDateTime scheduledTime;
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/QuickOrderRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.util.UUID;
+
+@Data
+public class QuickOrderRequest {
+    @NotBlank(message = "Customer phone is required")
+    private String customerPhone;
+    
+    @NotNull(message = "Shop ID is required")
+    private UUID shopId;
+    
+    @NotBlank(message = "Service type is required")
+    private String serviceType;
+    
+    @NotNull(message = "Item count is required")
+    private Integer itemCount;
+    
+    @NotNull(message = "Total amount is required")
+    private Double totalAmount;
+    
+    private String paymentMethod;
+    
+    private String notes;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/UpdateOrderRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+public class UpdateOrderRequest {
+    private List<UpdateOrderItemRequest> items;
+    private String priority;
+    private LocalDateTime promisedDate;
+    private DeliveryInfoDTO delivery;
+    private String notes;
+    private List<String> tags;
+    
+    @Data
+    public static class UpdateOrderItemRequest {
+        private UUID id;
+        private Integer quantity;
+        private Double weight;
+        private Double unitPrice;
+        private String specialInstructions;
+    }
+    
+    @Data
+    public static class DeliveryInfoDTO {
+        private String type;
+        private UUID addressId;
+        private LocalDateTime scheduledTime;
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/UpdateStatusRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+public class UpdateStatusRequest {
+    @NotBlank(message = "Status is required")
+    private String status;
+    
+    private String notes;
+    
+    private List<String> attachments;
+    
+    private Boolean notifyCustomer;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/UpdateItemStatusRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.util.UUID;
+import java.util.List;
+
+@Data
+public class UpdateItemStatusRequest {
+    @NotNull(message = "Item ID is required")
+    private UUID itemId;
+    
+    @NotBlank(message = "Status is required")
+    private String status;
+    
+    private String notes;
+    
+    private List<String> attachments;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderStatusDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderStatusDTO {
+    private UUID orderId;
+    private String previousStatus;
+    private String currentStatus;
+    private LocalDateTime updatedAt;
+    private String updatedBy;
+    private String notes;
+    private LocalDateTime estimatedCompletion;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderItemStatusDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderItemStatusDTO {
+    private UUID itemId;
+    private String previousStatus;
+    private String currentStatus;
+    private LocalDateTime updatedAt;
+    private String updatedBy;
+    private String notes;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/TimelineEventDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class TimelineEventDTO {
+    private UUID id;
+    private String type;
+    private String status;
+    private String description;
+    private LocalDateTime timestamp;
+    private UUID userId;
+    private String userName;
+    private Map<String, Object> metadata;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/OrderNoteDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderNoteDTO {
+    private UUID id;
+    private String content;
+    private String type;
+    private String createdBy;
+    private LocalDateTime createdAt;
+    private Boolean isCustomerVisible;
+    private List<String> attachments;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/AddNoteRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
+
+import java.util.List;
+
+@Data
+@Builder
+public class AddNoteRequest {
+    @NotBlank(message = "Content is required")
+    private String content;
+    
+    private String type;
+    
+    private Boolean isCustomerVisible;
+    
+    private List<String> attachments;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/AttachmentDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AttachmentDTO {
+    private UUID id;
+    private String fileName;
+    private String fileType;
+    private Long fileSize;
+    private String url;
+    private String uploadedBy;
+    private LocalDateTime uploadedAt;
+    private String type;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/DailyOrdersSummaryDTO.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DailyOrdersSummaryDTO {
+    private LocalDate date;
+    private UUID shopId;
+    private Integer totalOrders;
+    private Integer completedOrders;
+    private Integer pendingOrders;
+    private BigDecimal totalRevenue;
+    private BigDecimal averageOrderValue;
+    private List<ServiceSummaryDTO> byServiceType;
+    private List<HourlyDTO> byHour;
+    private Integer peakHour;
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ServiceSummaryDTO {
+        private String serviceType;
+        private Integer count;
+        private BigDecimal revenue;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HourlyDTO {
+        private Integer hour;
+        private Integer count;
+    }
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/TransferOrderRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.util.UUID;
+
+@Data
+public class TransferOrderRequest {
+    @NotNull(message = "Target shop ID is required")
+    private UUID targetShopId;
+    
+    @NotNull(message = "Reason is required")
+    private String reason;
+    
+    private String transferNotes;
+    
+    private Boolean notifyCustomer;
+}
+
+
+===== /data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/order/dto/CancelOrderRequest.java =====
+
+package com.jjenus.qliina_management.order.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class CancelOrderRequest {
+    @NotNull(message = "Reason is required")
+    private String reason;
+    
+    private String notes;
+}
