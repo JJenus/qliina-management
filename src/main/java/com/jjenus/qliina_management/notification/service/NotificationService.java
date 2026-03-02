@@ -16,6 +16,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.jjenus.qliina_management.notification.model.NotificationLog.DeliveryStatus;
+import java.util.stream.Collectors;
+
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -444,6 +447,44 @@ public class NotificationService {
                 sendNotification(businessId, request);
             });
     }
+    
+    @Transactional(readOnly = true)
+public NotificationStatsDTO getDeliveryStats(UUID businessId, LocalDateTime startDate, LocalDateTime endDate) {
+    List<NotificationLog> logs = logRepository.findByBusinessIdAndDateRange(businessId, startDate, endDate);
+    
+    long totalSent = logs.size();
+    long totalDelivered = logs.stream().filter(l -> l.getStatus() == DeliveryStatus.DELIVERED).count();
+    long totalFailed = logs.stream().filter(l -> l.getStatus() == DeliveryStatus.FAILED).count();
+    double successRate = totalSent > 0 ? (totalDelivered * 100.0 / totalSent) : 0;
+    
+    Map<String, Long> byChannel = logs.stream()
+        .collect(Collectors.groupingBy(
+            l -> l.getChannel().toString(),
+            Collectors.counting()
+        ));
+    
+    Map<String, Long> byStatus = logs.stream()
+        .collect(Collectors.groupingBy(
+            l -> l.getStatus().toString(),
+            Collectors.counting()
+        ));
+    
+    return NotificationStatsDTO.builder()
+        .totalSent(totalSent)
+        .totalDelivered(totalDelivered)
+        .totalFailed(totalFailed)
+        .successRate(successRate)
+        .byChannel(byChannel)
+        .byStatus(byStatus)
+        .build();
+}
+
+@Transactional
+public void deleteTemplate(UUID templateId) {
+    NotificationTemplate template = templateRepository.findById(templateId)
+        .orElseThrow(() -> new BusinessException("Template not found", "TEMPLATE_NOT_FOUND"));
+    templateRepository.delete(template);
+}
     
     // ==================== Helper Methods ====================
     

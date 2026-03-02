@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.notification.dto.RegisterDeviceRequest;
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
  
 import java.util.List;
 import java.util.UUID;
@@ -70,6 +71,13 @@ public class PushNotificationService {
         // Web push implementation would go here
         log.info("Sending web push to device: {}", device.getPushToken());
     }
+    
+    @Transactional(readOnly = true)
+public List<UserDeviceDTO> getUserDevices(UUID userId) {
+    return userDeviceRepository.findByUserIdAndIsActiveTrue(userId).stream()
+        .map(this::convertToDTO)
+        .collect(Collectors.toList());
+}
     
     @Transactional
 public UserDeviceDTO registerDevice(UUID businessId, UUID userId, RegisterDeviceRequest request) {

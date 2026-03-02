@@ -17,6 +17,12 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     
     Page<NotificationLog> findByNotificationId(UUID notificationId, Pageable pageable);
     
+    @Query("SELECT nl FROM NotificationLog nl WHERE nl.businessId = :businessId " +
+       "AND nl.sentAt BETWEEN :startDate AND :endDate")
+List<NotificationLog> findByBusinessIdAndDateRange(@Param("businessId") UUID businessId,
+                                                   @Param("startDate") LocalDateTime startDate,
+                                                   @Param("endDate") LocalDateTime endDate);
+    
 @Query("SELECT nl FROM NotificationLog nl WHERE nl.businessId = :businessId AND " +
        "(:channel IS NULL OR nl.channel = :channel) AND " +
        "(:status IS NULL OR nl.status = :status) AND " +
