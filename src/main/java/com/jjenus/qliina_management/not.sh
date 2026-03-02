@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the base path - update this to match your actual project path
-BASE_PATH="/data/data/com.termux/files/home/storage/shared/Workbench/apps/qliina/qliina-management/src/main/java/com/jjenus/qliina_management/notification"
+BASE_PATH="./notification"
 
 echo "Creating refactored notification module structure..."
 

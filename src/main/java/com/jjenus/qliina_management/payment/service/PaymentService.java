@@ -27,7 +27,7 @@ import com.jjenus.qliina_management.identity.model.User;
 
 
 import com.jjenus.qliina_management.notification.model.SMSConfiguration;
-import com.jjenus.qliina_management.notification.service.EncryptionService;
+import com.jjenus.qliina_management.common.security.EncryptionService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

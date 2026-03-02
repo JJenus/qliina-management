@@ -5,8 +5,7 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.common.ErrorResponse;
 import com.jjenus.qliina_management.notification.dto.*;
-import com.jjenus.qliina_management.notification.service.NotificationService;
-import com.jjenus.qliina_management.notification.service.PushNotificationService;
+import com.jjenus.qliina_management.notification.service.NotificationOrchestrator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -36,9 +35,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NotificationController {
     
-    private final NotificationService notificationService;
-    private final PushNotificationService pushService;
-    
+    private final NotificationOrchestrator notificationOrchestrator;
+
     // ==================== Notification Operations ====================
     
     @Operation(
@@ -77,7 +75,7 @@ public class NotificationController {
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         
         UUID userId = getCurrentUserId(userDetails);
-        return ResponseEntity.ok(notificationService.getNotifications(
+        return ResponseEntity.ok(notificationOrchestrator.getNotifications(
             businessId, userId, type, status, fromDate, toDate, pageable));
     }
     
@@ -99,7 +97,7 @@ public class NotificationController {
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
         UUID userId = getCurrentUserId(userDetails);
-        return ResponseEntity.ok(new CountDTO(notificationService.getUnreadCount(userId)));
+        return ResponseEntity.ok(new CountDTO(notificationOrchestrator.getUnreadCount(userId)));
     }
     
     @Operation(
@@ -124,7 +122,7 @@ public class NotificationController {
             
             @Valid @RequestBody MarkReadRequest request) {
         UUID userId = getCurrentUserId(userDetails);
-        notificationService.markAsRead(request, userId);
+        notificationOrchestrator.markAsRead(request, userId);
         return ResponseEntity.ok(SuccessResponse.of("Notifications marked as read"));
     }
     
@@ -148,7 +146,7 @@ public class NotificationController {
             @PathVariable UUID businessId,
             
             @Valid @RequestBody SendNotificationRequest request) {
-        return ResponseEntity.ok(notificationService.sendNotification(businessId, request));
+        return ResponseEntity.ok(notificationOrchestrator.sendNotification(businessId, request));
     }
     
     // ==================== Template Management ====================
@@ -167,7 +165,7 @@ public class NotificationController {
     public ResponseEntity<List<NotificationTemplateDTO>> getTemplates(
             @Parameter(description = "Business ID", required = true)
             @PathVariable UUID businessId) {
-        return ResponseEntity.ok(notificationService.getTemplates(businessId));
+        return ResponseEntity.ok(notificationOrchestrator.getTemplates(businessId));
     }
     
     @Operation(
@@ -188,7 +186,7 @@ public class NotificationController {
             @PathVariable UUID businessId,
             
             @Valid @RequestBody CreateTemplateRequest request) {
-        return ResponseEntity.ok(notificationService.createTemplate(businessId, request));
+        return ResponseEntity.ok(notificationOrchestrator.createTemplate(businessId, request));
     }
     
     @Operation(
@@ -214,7 +212,7 @@ public class NotificationController {
             @PathVariable UUID templateId,
             
             @Valid @RequestBody UpdateTemplateRequest request) {
-        return ResponseEntity.ok(notificationService.updateTemplate(templateId, request));
+        return ResponseEntity.ok(notificationOrchestrator.updateTemplate(templateId, request));
     }
     
     @Operation(
@@ -236,7 +234,7 @@ public class NotificationController {
             
             @Parameter(description = "Template ID", required = true)
             @PathVariable UUID templateId) {
-        notificationService.deleteTemplate(templateId);
+        notificationOrchestrator.deleteTemplate(templateId);
         return ResponseEntity.ok(SuccessResponse.of("Template deleted successfully"));
     }
     
@@ -262,7 +260,7 @@ public class NotificationController {
             @PathVariable UUID businessId,
             
             @Valid @RequestBody TestNotificationRequest request) {
-        notificationService.testNotification(businessId, request);
+        notificationOrchestrator.testNotification(businessId, request);
         return ResponseEntity.ok(SuccessResponse.of("Test notification sent"));
     }
     
@@ -297,7 +295,7 @@ public class NotificationController {
             
             @Parameter(description = "Pagination parameters")
             @PageableDefault(size = 20, sort = "sentAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(notificationService.getNotificationLogs(
+        return ResponseEntity.ok(notificationOrchestrator.getNotificationLogs(
             businessId, channel, status, fromDate, toDate, pageable));
     }
     
@@ -321,7 +319,7 @@ public class NotificationController {
             
             @Parameter(description = "End date", required = true)
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-        return ResponseEntity.ok(notificationService.getDeliveryStats(businessId, startDate, endDate));
+        return ResponseEntity.ok(notificationOrchestrator.getDeliveryStats(businessId, startDate, endDate));
     }
     
     // ==================== Device Management ====================
@@ -348,7 +346,7 @@ public class NotificationController {
             
             @Valid @RequestBody RegisterDeviceRequest request) {
         UUID userId = getCurrentUserId(userDetails);
-        return ResponseEntity.ok(pushService.registerDevice(businessId, userId, request));
+        return ResponseEntity.ok(notificationOrchestrator.registerDevice(businessId, userId, request));
     }
     
     @Operation(
@@ -374,7 +372,7 @@ public class NotificationController {
             @Parameter(description = "Device ID", required = true)
             @PathVariable String deviceId) {
         UUID userId = getCurrentUserId(userDetails);
-        pushService.unregisterDevice(userId, deviceId);
+        notificationOrchestrator.unregisterDevice(userId, deviceId);
         return ResponseEntity.ok(SuccessResponse.of("Device unregistered"));
     }
     
@@ -396,7 +394,7 @@ public class NotificationController {
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
         UUID userId = getCurrentUserId(userDetails);
-        return ResponseEntity.ok(pushService.getUserDevices(userId));
+        return ResponseEntity.ok(notificationOrchestrator.getMyDevices(userId));
     }
     
     private UUID getCurrentUserId(UserDetails userDetails) {
