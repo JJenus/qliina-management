@@ -33,3 +33,7 @@ build/
 .vscode/
 .sh
 .aider*
+
+*.log
+project_dump.txt
+note.txt
