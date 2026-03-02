@@ -381,6 +381,24 @@ public class QualityService {
             .build();
     }
     
+    public Map<String, Long> getDefectTypeDistribution(UUID businessId, LocalDateTime startDate, LocalDateTime endDate) {
+    List<Object[]> results = defectRepository.getDefectTypeDistribution(businessId, startDate, endDate);
+    return results.stream()
+        .collect(Collectors.toMap(
+            r -> (String) r[0],
+            r -> (Long) r[1]
+        ));
+}
+
+public Map<String, Long> getSeverityDistribution(UUID businessId, LocalDateTime startDate, LocalDateTime endDate) {
+    List<Object[]> results = defectRepository.getSeverityDistribution(businessId, startDate, endDate);
+    return results.stream()
+        .collect(Collectors.toMap(
+            r -> (String) r[0],
+            r -> (Long) r[1]
+        ));
+}
+    
     private QualityChecklistDTO mapToChecklistDTO(QualityChecklist checklist) {
         return QualityChecklistDTO.builder()
             .id(checklist.getId())
