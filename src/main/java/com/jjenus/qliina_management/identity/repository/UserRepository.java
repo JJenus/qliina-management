@@ -18,6 +18,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     
     Optional<User> findByEmail(String email);
     
+    @Query("""
+SELECT u
+FROM User u
+WHERE u.username = :identity
+   OR u.email = :identity
+""")
+Optional<User> findByIdentity(@Param("identity") String identity);
+    
     Optional<User> findByPhone(String phone);
     
     @Query("SELECT u FROM User u WHERE u.businessId = :businessId")

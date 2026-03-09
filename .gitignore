@@ -37,3 +37,4 @@ build/
 *.log
 project_dump.txt
 note.txt
+*.py

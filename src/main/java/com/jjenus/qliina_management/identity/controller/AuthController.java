@@ -3,6 +3,8 @@ package com.jjenus.qliina_management.identity.controller;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.common.ErrorResponse;
 import com.jjenus.qliina_management.identity.dto.*;
+import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.identity.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -25,9 +28,10 @@ import java.util.UUID;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
-    
+
     private final AuthService authService;
-    
+    private final UserRepository userRepository; // FIX: inject so getCurrentUserId works
+
     @Operation(
         summary = "Login user",
         description = "Authenticate user credentials and return JWT tokens. If 2FA is enabled, returns requires2FA flag."
@@ -46,7 +50,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.authenticate(request));
     }
-    
+
     @Operation(
         summary = "Refresh token",
         description = "Get new access token using a valid refresh token"
@@ -61,7 +65,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
         return ResponseEntity.ok(authService.refreshToken(request.getRefreshToken()));
     }
-    
+
     @Operation(
         summary = "Logout user",
         description = "Invalidate refresh token and clear security context"
@@ -76,7 +80,7 @@ public class AuthController {
         authService.logout(request.getRefreshToken());
         return ResponseEntity.ok(SuccessResponse.of("Logged out successfully"));
     }
-    
+
     @Operation(
         summary = "Forgot password",
         description = "Request password reset token (always returns success to prevent user enumeration)"
@@ -91,7 +95,7 @@ public class AuthController {
         authService.forgotPassword(request);
         return ResponseEntity.ok(SuccessResponse.of("If the account exists, a reset link will be sent"));
     }
-    
+
     @Operation(
         summary = "Reset password",
         description = "Reset password using token received via email"
@@ -108,7 +112,7 @@ public class AuthController {
         authService.resetPassword(request);
         return ResponseEntity.ok(SuccessResponse.of("Password reset successfully"));
     }
-    
+
     @Operation(
         summary = "Change password",
         description = "Change password for authenticated user"
@@ -127,11 +131,12 @@ public class AuthController {
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ChangePasswordRequest request) {
+        // FIX: original always passed the nil UUID; now resolves the real user ID.
         UUID userId = getCurrentUserId(userDetails);
         authService.changePassword(userId, request);
         return ResponseEntity.ok(SuccessResponse.of("Password changed successfully"));
     }
-    
+
     @Operation(
         summary = "Verify 2FA",
         description = "Verify 2FA code during login process"
@@ -148,7 +153,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> verify2FA(@Valid @RequestBody Verify2FARequest request) {
         return ResponseEntity.ok(authService.verify2FA(request));
     }
-    
+
     @Operation(
         summary = "Setup 2FA",
         description = "Setup two-factor authentication for user"
@@ -163,7 +168,7 @@ public class AuthController {
     public ResponseEntity<Setup2FAResponse> setup2FA(@Valid @RequestBody Setup2FARequest request) {
         return ResponseEntity.ok(authService.setup2FA(request));
     }
-    
+
     @Operation(
         summary = "Disable 2FA",
         description = "Disable two-factor authentication for user"
@@ -178,9 +183,19 @@ public class AuthController {
         authService.disable2FA(request);
         return ResponseEntity.ok(SuccessResponse.of("2FA disabled successfully"));
     }
-    
+
+    /**
+     * FIX: original returned a hardcoded nil UUID (00000000-...) meaning
+     * changePassword always operated on a phantom user rather than the
+     * authenticated caller.
+     */
     private UUID getCurrentUserId(UserDetails userDetails) {
-        // In real implementation, fetch from user repository
-        return UUID.fromString("00000000-0000-0000-0000-000000000000");
+        if (userDetails == null) {
+            throw new UsernameNotFoundException("No authenticated user");
+        }
+        User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "Authenticated user not found: " + userDetails.getUsername()));
+        return user.getId();
     }
-} 
+}

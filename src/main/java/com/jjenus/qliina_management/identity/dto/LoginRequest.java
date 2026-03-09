@@ -2,8 +2,10 @@ package com.jjenus.qliina_management.identity.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import lombok.ToString;
 
 @Data
+@ToString
 public class LoginRequest {
     @NotBlank(message = "Username is required")
     private String username;

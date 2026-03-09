@@ -16,37 +16,38 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
+
     private final UserRepository userRepository;
-    
+
     @Override
     @Transactional(readOnly = true)
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-        
+    public UserDetails loadUserByUsername(String identity) throws UsernameNotFoundException {
+        User user = userRepository.findByIdentity(identity)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + identity));
+
         var authorities = user.getRoles().stream()
-            .flatMap(userRole -> userRole.getRole().getPermissions().stream())
-            .map(permission -> new SimpleGrantedAuthority(permission.getName()))
-            .collect(Collectors.toSet());
-        
-        // Add direct permissions
+                .flatMap(userRole -> userRole.getRole().getPermissions().stream())
+                .map(permission -> new SimpleGrantedAuthority(permission.getName()))
+                .collect(Collectors.toSet());
+
+        // Add non-expired direct permissions
         user.getDirectPermissions().stream()
-            .filter(userPermission -> userPermission.getExpiresAt() == null || 
-                                      userPermission.getExpiresAt().isAfter(LocalDateTime.now()))
-            .map(userPermission -> new SimpleGrantedAuthority(userPermission.getPermission().getName()))
-            .forEach(authorities::add);
-        
+                .filter(userPermission -> userPermission.getExpiresAt() == null ||
+                        userPermission.getExpiresAt().isAfter(LocalDateTime.now()))
+                .map(userPermission -> new SimpleGrantedAuthority(userPermission.getPermission().getName()))
+                .forEach(authorities::add);
+
         return org.springframework.security.core.userdetails.User.builder()
-            .username(user.getUsername())
-            .password(user.getAuthAccount().getPasswordHash())
-            .authorities(authorities)
-            .disabled(!user.getEnabled())
-            .accountExpired(false)
-            .accountLocked(isAccountLocked(user))
-            .credentialsExpired(false)
-            .build();
+                .username(user.getUsername())
+                .password(user.getAuthAccount().getPasswordHash())
+                .authorities(authorities)
+                .disabled(!user.getEnabled())
+                .accountExpired(false)
+                .accountLocked(isAccountLocked(user))
+                .credentialsExpired(false)
+                .build();
     }
-    
+
     private boolean isAccountLocked(User user) {
         if (user.getAuthAccount() == null || user.getAuthAccount().getLockedUntil() == null) {
             return false;

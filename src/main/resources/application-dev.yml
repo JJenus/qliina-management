@@ -19,7 +19,11 @@ logging:
 server:
   port: 8080
   
-
+# Encryption Configuration
 encryption:
-  secret: tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=
-  salt: f14ecc5ca42ba522a1f5a38df1564282
+  secret: ${ENCRYPTION_SECRET:tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=}
+  salt: ${ENCRYPTION_SALT:f14ecc5ca42ba522a1f5a38df1564282}
+  iteration-count: 65536
+  key-length: 256
+  enabled: true
+
