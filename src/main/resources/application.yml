@@ -22,11 +22,9 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
-
+  
 server:
   port: 8080
-  servlet:
-    context-path: /api
   error:
     include-message: always
     include-binding-errors: always

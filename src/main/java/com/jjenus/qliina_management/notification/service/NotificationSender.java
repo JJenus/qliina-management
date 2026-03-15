@@ -10,6 +10,7 @@ import com.jjenus.qliina_management.notification.repository.NotificationLogRepos
 import com.jjenus.qliina_management.notification.repository.NotificationRepository;
 import com.jjenus.qliina_management.notification.repository.NotificationTemplateRepository;
 import com.jjenus.qliina_management.notification.service.channel.*;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class NotificationSender {
     private final SmsChannelService smsChannel;
     private final PushChannelService pushChannel;
     private final WhatsAppChannelService whatsAppChannel;
+    private final WebSocketPublisher webSocketPublisher;
     
     @Transactional
     public List<Notification> prepareNotifications(UUID businessId, SendNotificationRequest request) {
@@ -78,7 +80,13 @@ public class NotificationSender {
                     break;
                 case IN_APP:
                     notification.markAsDelivered();
-                    break;
+                    notificationRepository.save(notification);
+                    // Push live to client via WebSocket
+                    if (notification.getUserId() != null) {
+                        webSocketPublisher.publishUserNotification(
+                            notification.getUserId(), notification);
+                    }
+                    return; // already saved; skip markAsSent below
             }
             
             notification.markAsSent();

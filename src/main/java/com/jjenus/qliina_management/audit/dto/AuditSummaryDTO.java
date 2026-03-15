@@ -3,7 +3,6 @@ package com.jjenus.qliina_management.audit.dto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.experimental.SuperBuilder; 
 import lombok.NoArgsConstructor;
 
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Data
-@SuperBuilder
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuditSummaryDTO {

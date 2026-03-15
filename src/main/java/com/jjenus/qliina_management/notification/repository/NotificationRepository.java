@@ -15,41 +15,55 @@ import java.util.UUID;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
-    
+
     Page<Notification> findByUserId(UUID userId, Pageable pageable);
-    
+
     @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND n.status = 'PENDING'")
     List<Notification> findPendingByUserId(@Param("userId") UUID userId);
-    
+
     @Query("SELECT n FROM Notification n WHERE n.status = 'PENDING' AND n.scheduledFor <= :now")
     List<Notification> findDueNotifications(@Param("now") LocalDateTime now);
-    
-    @Query("SELECT COUNT(n) FROM Notification n WHERE n.userId = :userId AND n.status = 'DELIVERED'")
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.readAt = :readAt, n.status = 'READ' "
+         + "WHERE n.userId = :userId AND n.readAt IS NULL")
+    void markAllAsRead(@Param("userId") UUID userId,
+                       @Param("readAt") LocalDateTime readAt);
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.readAt = :readAt, n.status = 'READ' WHERE n.id = :id")
+    void markAsRead(@Param("id") UUID id,
+                    @Param("readAt") LocalDateTime readAt);
+
+    @Query("SELECT n FROM Notification n WHERE n.status = 'FAILED' "
+         + "AND n.retryCount < :maxRetry AND n.updatedAt < :before")
+    List<Notification> findRetryable(
+            @Param("maxRetry") int maxRetry,
+            @Param("before") LocalDateTime before);
+
+    @Query("SELECT COUNT(n) FROM Notification n "
+         + "WHERE n.userId = :userId AND n.status = 'DELIVERED' AND n.readAt IS NULL")
     long countUnreadByUserId(@Param("userId") UUID userId);
-    
-    @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId AND " +
-           "(:userId IS NULL OR n.userId = :userId) AND " +
-           "(:type IS NULL OR n.type = :type) AND " +
-           "(:status IS NULL OR n.status = :status) AND " +
-           "(:fromDate IS NULL OR n.createdAt >= :fromDate) AND " +
-           "(:toDate IS NULL OR n.createdAt <= :toDate)")
-    Page<Notification> findByFilters(@Param("businessId") UUID businessId,
-                                       @Param("userId") UUID userId,
-                                       @Param("type") Notification.NotificationType type,
-                                       @Param("status") Notification.NotificationStatus status,
-                                       @Param("fromDate") LocalDateTime fromDate,
-                                       @Param("toDate") LocalDateTime toDate,
-                                       Pageable pageable);
-    
-    @Modifying
-    @Query("UPDATE Notification n SET n.status = 'READ', n.readAt = :now WHERE n.id = :id")
-    void markAsRead(@Param("id") UUID id, @Param("now") LocalDateTime now);
-    
-    @Modifying
-    @Query("UPDATE Notification n SET n.status = 'READ', n.readAt = :now WHERE n.userId = :userId")
-    void markAllAsRead(@Param("userId") UUID userId, @Param("now") LocalDateTime now);
-    
-    @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId AND n.type = 'ORDER_STATUS' " +
-           "AND JSON_EXTRACT(n.data, '$.orderId') = :orderId")
-    List<Notification> findByOrderId(@Param("businessId") UUID businessId, @Param("orderId") String orderId);
+
+    @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId AND "
+         + "(:userId IS NULL OR n.userId = :userId) AND "
+         + "(:type IS NULL OR n.type = :type) AND "
+         + "(:status IS NULL OR n.status = :status) AND "
+         + "(:fromDate IS NULL OR n.createdAt >= :fromDate) AND "
+         + "(:toDate IS NULL OR n.createdAt <= :toDate)")
+    Page<Notification> findByFilters(
+            @Param("businessId") UUID businessId,
+            @Param("userId") UUID userId,
+            @Param("type") Notification.NotificationType type,
+            @Param("status") Notification.NotificationStatus status,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
+
+    @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId"
+         + " AND n.type = 'ORDER_STATUS'"
+         + " AND JSON_EXTRACT(n.data, '$.orderId') = :orderId")
+    List<Notification> findByOrderId(
+            @Param("businessId") UUID businessId,
+            @Param("orderId") String orderId);
 }

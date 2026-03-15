@@ -25,6 +25,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import com.jjenus.qliina_management.notification.dto.NotificationPreferenceDTO;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +38,7 @@ import java.util.UUID;
 public class NotificationController {
     
     private final NotificationOrchestrator notificationOrchestrator;
+    private final com.jjenus.qliina_management.notification.service.NotificationPreferenceService preferenceService;
 
     // ==================== Notification Operations ====================
     
@@ -397,8 +400,50 @@ public class NotificationController {
         return ResponseEntity.ok(notificationOrchestrator.getMyDevices(userId));
     }
     
+
+    // ==================== Notification Preferences ====================
+
+    @Operation(
+        summary = "Get notification preferences",
+        description = "Get the authenticated user's notification opt-in/out preferences")
+    @GetMapping("/preferences")
+    @PreAuthorize(
+        "hasPermission(#businessId, 'BUSINESS', 'notification.view')")
+    public ResponseEntity<java.util.List<
+            NotificationPreferenceDTO>>
+    getPreferences(
+            @PathVariable UUID businessId,
+            @AuthenticationPrincipal
+            UserDetails userDetails) {
+        return ResponseEntity.ok(
+            preferenceService.getPreferences(getCurrentUserId(userDetails)));
+    }
+
+    @Operation(
+        summary = "Update notification preference",
+        description = "Opt in or out of a specific notification channel + type combination")
+    @PutMapping("/preferences")
+    @PreAuthorize(
+        "hasPermission(#businessId, 'BUSINESS', 'notification.update')")
+    public ResponseEntity<
+            NotificationPreferenceDTO>
+    updatePreference(
+            @PathVariable UUID businessId,
+            @AuthenticationPrincipal
+            UserDetails userDetails,
+            @Valid
+            @RequestBody
+            NotificationPreferenceDTO request) {
+        return ResponseEntity.ok(
+            preferenceService.upsertPreference(
+                getCurrentUserId(userDetails), businessId, request));
+    }
+
     private UUID getCurrentUserId(UserDetails userDetails) {
-        // In real implementation, fetch from user repository
-        return UUID.fromString("00000000-0000-0000-0000-000000000000");
+        return com.jjenus.qliina_management.common.util.SecurityContextUtil.requireUserId();
+    }
+    
+    private UUID getCurrentUserId() {
+        return com.jjenus.qliina_management.common.util.SecurityContextUtil.requireUserId();
     }
 }

@@ -3,6 +3,7 @@ package com.jjenus.qliina_management.common.config;
 import com.jjenus.qliina_management.identity.security.CustomPermissionEvaluator;
 import com.jjenus.qliina_management.identity.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
@@ -46,6 +47,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/ws/**", "/ws").permitAll()
+                .requestMatchers("/api/v1/ws-docs/**").permitAll()
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -53,6 +56,22 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Prevents Spring Boot from auto-registering JwtAuthenticationFilter in the root
+     * servlet filter chain. Without this, the @Component annotation on the filter causes
+     * it to be registered twice: once here (inside the security chain) and once again
+     * as a plain servlet filter — resulting in double execution and requests never
+     * reaching the DispatcherServlet after the security chain completes.
+     */
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(
+            JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration =
+                new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

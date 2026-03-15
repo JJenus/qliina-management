@@ -6,6 +6,7 @@ import com.jjenus.qliina_management.identity.repository.ShopRepository;
 import com.jjenus.qliina_management.inventory.dto.*;
 import com.jjenus.qliina_management.inventory.model.*;
 import com.jjenus.qliina_management.inventory.repository.*;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,6 +38,7 @@ public class InventoryService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final StockAlertRepository alertRepository;
     private final ShopRepository shopRepository;
+    private final WebSocketPublisher webSocketPublisher;
     
     // ==================== Inventory Items ====================
     

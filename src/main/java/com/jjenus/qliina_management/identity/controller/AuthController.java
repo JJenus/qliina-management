@@ -22,7 +22,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Tag(name = "Authentication", description = "Authentication and authorization endpoints")
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -48,6 +50,7 @@ public class AuthController {
     })
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+      log.debug("Login hit");
         return ResponseEntity.ok(authService.authenticate(request));
     }
 

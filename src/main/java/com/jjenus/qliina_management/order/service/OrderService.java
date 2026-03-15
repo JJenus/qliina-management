@@ -26,6 +26,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
+import com.jjenus.qliina_management.common.util.SecurityContextUtil;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
+import com.jjenus.qliina_management.common.util.SecurityContextUtil;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
+import com.jjenus.qliina_management.common.util.SecurityContextUtil;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -39,6 +45,7 @@ import java.util.stream.Collectors;
 public class OrderService {
     
     private final OrderRepository orderRepository;
+    private final WebSocketPublisher webSocketPublisher;
     private final OrderItemRepository orderItemRepository;
     private final OrderPaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
@@ -49,14 +56,7 @@ public class OrderService {
     private final QualityCheckRepository qualityCheckRepository;  // ADDED
     
     private UUID getCurrentUserId() {
-        try {
-            UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            return userRepository.findByUsername(userDetails.getUsername())
-                .map(User::getId)
-                .orElse(null);
-        } catch (Exception e) {
-            return null;
-        }
+        return SecurityContextUtil.getCurrentUserId().orElse(null);
     }
     
     private String getUserName(UUID userId) {
@@ -330,6 +330,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             order.setCompletedAt(LocalDateTime.now());
         }
         
+        String userName = SecurityContextUtil.requireUsername();
+        
         OrderTimeline timeline = new OrderTimeline();
         timeline.setOrder(order);
         timeline.setType("STATUS_CHANGE");
@@ -337,17 +339,27 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         timeline.setDescription(request.getNotes());
         timeline.setTimestamp(LocalDateTime.now());
         timeline.setUserId(getCurrentUserId());
-        timeline.setUserName(getUserName(getCurrentUserId()));
+        timeline.setUserName(userName);
         order.getTimeline().add(timeline);
         
         order = orderRepository.save(order);
-        
+
+        // Broadcast real-time order update to all subscribers of this business
+        webSocketPublisher.publishOrderUpdate(
+            order.getBusinessId(), order.getId(),
+            OrderStatusDTO.builder()
+                .orderId(order.getId())
+                .previousStatus(previousStatus.toString())
+                .currentStatus(newStatus.toString())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
         return OrderStatusDTO.builder()
             .orderId(order.getId())
             .previousStatus(previousStatus.toString())
             .currentStatus(newStatus.toString())
             .updatedAt(LocalDateTime.now())
-            .updatedBy(getUserName(getCurrentUserId()))
+            .updatedBy(userName)
             .notes(request.getNotes())
             .estimatedCompletion(order.getExpectedReadyAt())
             .build();

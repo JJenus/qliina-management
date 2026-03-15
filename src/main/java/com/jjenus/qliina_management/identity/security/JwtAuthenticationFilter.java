@@ -33,8 +33,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
+        
+        boolean allow = shouldNotFilter(request);
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (allow || authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -69,11 +71,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
-        return path.startsWith("/api/v1/auth/") ||
-               path.startsWith("/swagger-ui") ||
-               path.startsWith("/api-docs") ||
-               path.startsWith("/actuator/health");
+protected boolean shouldNotFilter(HttpServletRequest request) {
+    String path = request.getRequestURI();
+    String contextPath = request.getContextPath();
+    
+    if (contextPath != null && !contextPath.isEmpty()) {
+        path = path.substring(contextPath.length());
     }
+    
+    // Debug logging
+    log.debug("Checking if filter should apply for path: {}, servletPath: {}, requestURI: {}", 
+              path, request.getServletPath(), request.getRequestURI());
+    
+    boolean shouldNotFilter = path.startsWith("/api/v1/auth/") ||
+                              path.startsWith("/swagger-ui") ||
+                              path.startsWith("/api-docs") ||
+                              path.startsWith("/actuator/health");
+    
+    if (shouldNotFilter) {
+        log.debug("Bypassing JWT filter for path: {}", path);
+    }
+    
+    return shouldNotFilter;
+}
 }

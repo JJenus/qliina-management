@@ -35,6 +35,7 @@ build/
 .aider*
 
 *.log
+logs
 project_dump.txt
 note.txt
 *.py
