@@ -1,5 +1,8 @@
 package com.jjenus.qliina_management.identity.service;
 
+import com.jjenus.qliina_management.business.dto.BusinessRegistrationResponse;
+import com.jjenus.qliina_management.business.dto.CreateBusinessRequest;
+import com.jjenus.qliina_management.business.service.BusinessService;
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.identity.dto.*;
 import com.jjenus.qliina_management.identity.model.*;
@@ -24,171 +27,174 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Handles authentication, session management, and password operations.
+ *
+ * Open business self-registration is delegated to BusinessService.registerBusiness
+ * so all tenant-creation logic lives in one place.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final AuthenticationManager authenticationManager;
-    private final UserDetailsService userDetailsService;
-    private final JwtProvider jwtProvider;
-    private final UserRepository userRepository;
-    private final AuthAccountRepository authAccountRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final AuthenticationManager        authenticationManager;
+    private final UserDetailsService           userDetailsService;
+    private final JwtProvider                  jwtProvider;
+    private final UserRepository               userRepository;
+    private final AuthAccountRepository        authAccountRepository;
+    private final RefreshTokenRepository       refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordEncoder              passwordEncoder;
+    /** Used for the business-status check on login and the registration flow. */
+    private final BusinessService              businessService;
+
+
+    /**
+     * Returns the full UserInfo payload for the currently authenticated user.
+     * Called by GET /api/v1/auth/me.
+     *
+     * @param userId  the UUID resolved from the JWT by the controller
+     * @return        a UserInfo DTO identical in shape to the login response
+     */
+    @Transactional(readOnly = true)
+    public AuthResponse.UserInfo getCurrentUserInfo(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        return mapToUserInfo(user);
+    }
+    
+    // -------------------------------------------------------------------------
+    // Authentication
+    // -------------------------------------------------------------------------
 
     @Transactional
     public AuthResponse authenticate(LoginRequest request) {
-        // FIX: use findByIdentity (username OR email) for the pre-auth lock check
         User preCheckUser = userRepository.findByIdentity(request.getUsername()).orElse(null);
         if (preCheckUser != null && isAccountLocked(preCheckUser)) {
             throw new BusinessException("Account is locked. Please try again later.", "ACCOUNT_LOCKED");
         }
-
         try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-            );
-
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            // FIX: UserDetails.getUsername() now always returns the canonical DB username
-            // (because CustomUserDetailsService always calls .username(user.getUsername())),
-            // so findByUsername() is safe here regardless of whether the caller used
-            // their email or username to log in.
-            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-            User user = userRepository.findByUsername(userDetails.getUsername())
+            Authentication auth = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
+            SecurityContextHolder.getContext().setAuthentication(auth);
+            UserDetails ud = (UserDetails) auth.getPrincipal();
+            User user = userRepository.findByUsername(ud.getUsername())
                     .orElseThrow(() -> new UsernameNotFoundException("User not found after authentication"));
 
-            // Check 2FA before issuing tokens
-            if (user.getAuthAccount() != null && Boolean.TRUE.equals(user.getAuthAccount().getTotpEnabled())) {
-                return AuthResponse.builder()
-                        .requires2FA(true)
-                        .user(mapToUserInfo(user))
-                        .build();
+            // FIX (Flaw 9): block login for suspended / cancelled businesses
+            if (user.getBusinessId() != null && !businessService.isOperational(user.getBusinessId())) {
+                throw new BusinessException(
+                        "This business account is not active. Please contact support.",
+                        "BUSINESS_NOT_ACTIVE");
             }
-
+            if (user.getAuthAccount() != null && Boolean.TRUE.equals(user.getAuthAccount().getTotpEnabled())) {
+                return AuthResponse.builder().requires2FA(true).user(mapToUserInfo(user)).build();
+            }
             updateLastLogin(user);
             clearFailedAttempts(user);
-
-            return generateAuthResponse(user, userDetails);
-
+            return generateAuthResponse(user, ud);
         } catch (BadCredentialsException e) {
             handleFailedLogin(request.getUsername());
             throw new BadCredentialsException("Invalid username or password");
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Open registration
+    // -------------------------------------------------------------------------
+
+    /** Delegates to BusinessService.registerBusiness — single transaction. */
+    @Transactional
+    public BusinessRegistrationResponse registerBusiness(CreateBusinessRequest request) {
+        return businessService.registerBusiness(request);
+    }
+
+    // -------------------------------------------------------------------------
+    // 2FA
+    // -------------------------------------------------------------------------
+
     @Transactional
     public AuthResponse verify2FA(Verify2FARequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-
         if (!verifyTOTP(user.getAuthAccount().getTotpSecret(), request.getCode())) {
             throw new BusinessException("Invalid 2FA code", "INVALID_2FA_CODE");
         }
-
         updateLastLogin(user);
         clearFailedAttempts(user);
-
-        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
-        return generateAuthResponse(user, userDetails);
+        return generateAuthResponse(user, userDetailsService.loadUserByUsername(user.getUsername()));
     }
 
     @Transactional
     public Setup2FAResponse setup2FA(Setup2FARequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-
         String secret = generateTOTPSecret();
-        String qrCodeUrl = generateQRCodeUrl(user.getUsername(), secret);
-        List<String> backupCodes = generateBackupCodes();
-
-        AuthAccount authAccount = user.getAuthAccount();
-        authAccount.setTotpSecret(secret);
-        authAccount.setTotpEnabled(false); // stays false until user confirms a valid code
-        authAccountRepository.save(authAccount);
-
-        return Setup2FAResponse.builder()
-                .secret(secret)
-                .qrCodeUrl(qrCodeUrl)
-                .backupCodes(backupCodes)
-                .build();
+        AuthAccount a = user.getAuthAccount();
+        a.setTotpSecret(secret); a.setTotpEnabled(false);
+        authAccountRepository.save(a);
+        return Setup2FAResponse.builder().secret(secret)
+                .qrCodeUrl(generateQRCodeUrl(user.getUsername(), secret))
+                .backupCodes(generateBackupCodes()).build();
     }
 
     @Transactional
     public void disable2FA(Disable2FARequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-
-        AuthAccount authAccount = user.getAuthAccount();
-        authAccount.setTotpSecret(null);
-        authAccount.setTotpEnabled(false);
-        authAccountRepository.save(authAccount);
+        user.getAuthAccount().setTotpSecret(null);
+        user.getAuthAccount().setTotpEnabled(false);
+        authAccountRepository.save(user.getAuthAccount());
     }
+
+    // -------------------------------------------------------------------------
+    // Token management
+    // -------------------------------------------------------------------------
 
     @Transactional
     public AuthResponse refreshToken(String refreshToken) {
-        // Validate DB record first — catches revoked tokens before touching JWT
-        String tokenHash = hashToken(refreshToken);
-        RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
+        String hash = hashToken(refreshToken);
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new BusinessException("Refresh token not found", "REFRESH_TOKEN_NOT_FOUND"));
-
-        if (storedToken.getRevokedAt() != null || storedToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (stored.getRevokedAt() != null || stored.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new BusinessException("Refresh token has been revoked or expired", "REFRESH_TOKEN_INVALID");
         }
-
         if (!jwtProvider.validateToken(refreshToken)) {
             throw new BusinessException("Invalid refresh token", "INVALID_REFRESH_TOKEN");
         }
-
         String username = jwtProvider.extractUsername(refreshToken);
-        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-
-        // Rotate: revoke used token before issuing new pair
-        storedToken.setRevokedAt(LocalDateTime.now());
-        refreshTokenRepository.save(storedToken);
-
-        return generateAuthResponse(user, userDetails);
+        stored.setRevokedAt(LocalDateTime.now());
+        refreshTokenRepository.save(stored);
+        return generateAuthResponse(user, userDetailsService.loadUserByUsername(username));
     }
 
     @Transactional
     public void logout(String refreshToken) {
-        String tokenHash = hashToken(refreshToken);
-        refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(token -> {
-            token.setRevokedAt(LocalDateTime.now());
-            refreshTokenRepository.save(token);
+        refreshTokenRepository.findByTokenHash(hashToken(refreshToken)).ifPresent(t -> {
+            t.setRevokedAt(LocalDateTime.now());
+            refreshTokenRepository.save(t);
         });
         SecurityContextHolder.clearContext();
     }
 
+    // -------------------------------------------------------------------------
+    // Password operations
+    // -------------------------------------------------------------------------
+
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
-        // Silent no-op when user not found — prevents user enumeration
-        // FIX: also uses findByIdentity so reset works when user provides email
         userRepository.findByIdentity(request.getUsername()).ifPresent(user -> {
             String token = generateSecureToken();
-            String tokenHash = hashToken(token);
-
-            PasswordResetToken resetToken = new PasswordResetToken();
-            resetToken.setUser(user);
-            resetToken.setTokenHash(tokenHash);
-            resetToken.setExpiresAt(LocalDateTime.now().plusHours(1));
-
-            passwordResetTokenRepository.save(resetToken);
-
-            // TODO: send email with token
+            PasswordResetToken rt = new PasswordResetToken();
+            rt.setUser(user); rt.setTokenHash(hashToken(token));
+            rt.setExpiresAt(LocalDateTime.now().plusHours(1));
+            passwordResetTokenRepository.save(rt);
             log.info("Password reset token for user {}: {}", user.getUsername(), token);
         });
     }
@@ -198,25 +204,20 @@ public class AuthService {
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new BusinessException("Passwords do not match", "PASSWORD_MISMATCH");
         }
-
-        String tokenHash = hashToken(request.getToken());
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new BusinessException("Invalid or expired token", "INVALID_RESET_TOKEN"));
-
-        if (resetToken.getUsedAt() != null || resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new BusinessException("Token has been used or expired", "TOKEN_EXPIRED");
+        PasswordResetToken rt = passwordResetTokenRepository.findByTokenHash(hashToken(request.getToken()))
+                .orElseThrow(() -> new BusinessException("Invalid or expired reset token", "INVALID_RESET_TOKEN"));
+        if (rt.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BusinessException("Reset token has expired", "RESET_TOKEN_EXPIRED");
         }
-
-        User user = resetToken.getUser();
-        AuthAccount authAccount = user.getAuthAccount();
-        authAccount.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        authAccount.setPasswordLastChanged(LocalDateTime.now());
-        authAccountRepository.save(authAccount);
-
-        resetToken.setUsedAt(LocalDateTime.now());
-        passwordResetTokenRepository.save(resetToken);
-
-        refreshTokenRepository.deleteByUserId(user.getId());
+        if (rt.getUsedAt() != null) {
+            throw new BusinessException("Reset token has already been used", "RESET_TOKEN_USED");
+        }
+        AuthAccount a = rt.getUser().getAuthAccount();
+        a.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        a.setPasswordLastChanged(LocalDateTime.now());
+        authAccountRepository.save(a);
+        rt.setUsedAt(LocalDateTime.now());
+        passwordResetTokenRepository.save(rt);
     }
 
     @Transactional
@@ -224,190 +225,123 @@ public class AuthService {
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new BusinessException("Passwords do not match", "PASSWORD_MISMATCH");
         }
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-
-        AuthAccount authAccount = user.getAuthAccount();
-
-        if (!passwordEncoder.matches(request.getCurrentPassword(), authAccount.getPasswordHash())) {
-            throw new BusinessException("Current password is incorrect", "INVALID_CURRENT_PASSWORD");
+        AuthAccount a = user.getAuthAccount();
+        if (!passwordEncoder.matches(request.getCurrentPassword(), a.getPasswordHash())) {
+            throw new BusinessException("Current password is incorrect", "INVALID_PASSWORD");
         }
-
-        authAccount.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        authAccount.setPasswordLastChanged(LocalDateTime.now());
-        authAccountRepository.save(authAccount);
-
-        refreshTokenRepository.deleteByUserId(userId);
+        a.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        a.setPasswordLastChanged(LocalDateTime.now());
+        authAccountRepository.save(a);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private AuthResponse generateAuthResponse(User user, UserDetails userDetails) {
+    private AuthResponse generateAuthResponse(User user, UserDetails ud) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getId());
-        claims.put("businessId", user.getBusinessId());
-        claims.put("permissions", getEffectivePermissions(user));
-
-        String accessToken = jwtProvider.generateToken(claims, userDetails);
-        String refreshToken = jwtProvider.generateRefreshToken(userDetails);
-
-        storeRefreshToken(user, refreshToken, null);
-
-        return AuthResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .tokenType("Bearer")
-                .expiresIn(86400000L)
-                .user(mapToUserInfo(user))
-                .requires2FA(false)
-                .build();
+        claims.put("userId", user.getId()); claims.put("businessId", user.getBusinessId());
+        claims.put("permissions", effectivePermissions(user));
+        String at = jwtProvider.generateToken(claims, ud);
+        String rt = jwtProvider.generateRefreshToken(ud);
+        storeRefreshToken(user, rt, null);
+        return AuthResponse.builder().accessToken(at).refreshToken(rt)
+                .tokenType("Bearer").expiresIn(86400000L).user(mapToUserInfo(user)).requires2FA(false).build();
     }
 
     private void storeRefreshToken(User user, String token, String deviceInfo) {
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUser(user);
-        refreshToken.setTokenHash(hashToken(token));
-        refreshToken.setExpiresAt(LocalDateTime.now().plusDays(7));
-        refreshToken.setDeviceInfo(deviceInfo);
-        refreshTokenRepository.save(refreshToken);
+        RefreshToken rt = new RefreshToken();
+        rt.setUser(user); rt.setTokenHash(hashToken(token));
+        rt.setExpiresAt(LocalDateTime.now().plusDays(7)); rt.setDeviceInfo(deviceInfo);
+        refreshTokenRepository.save(rt);
     }
 
     private AuthResponse.UserInfo mapToUserInfo(User user) {
         return AuthResponse.UserInfo.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .businessId(user.getBusinessId())
-                .currentShopId(user.getPrimaryShopId())
-                .roles(user.getRoles().stream()
-                        .map(userRole -> userRole.getRole().getName())
-                        .collect(Collectors.toList()))
-                .permissions(getEffectivePermissions(user))
-                .requires2FA(user.getAuthAccount() != null &&
-                        Boolean.TRUE.equals(user.getAuthAccount().getTotpEnabled()))
-                .profileImage(user.getProfileImage())
-                .build();
+                .id(user.getId()).username(user.getUsername()).email(user.getEmail()).phone(user.getPhone())
+                .firstName(user.getFirstName()).lastName(user.getLastName())
+                .businessId(user.getBusinessId()).currentShopId(user.getPrimaryShopId())
+                .roles(user.getRoles().stream().map(ur -> ur.getRole().getName()).collect(Collectors.toList()))
+                .permissions(effectivePermissions(user))
+                .requires2FA(user.getAuthAccount() != null
+                        && Boolean.TRUE.equals(user.getAuthAccount().getTotpEnabled()))
+                .profileImage(user.getProfileImage()).build();
     }
 
-    private List<String> getEffectivePermissions(User user) {
-        return user.getRoles().stream()
-                .flatMap(userRole -> userRole.getRole().getPermissions().stream())
-                .map(Permission::getName)
-                .distinct()
-                .collect(Collectors.toList());
+    private List<String> effectivePermissions(User user) {
+        return user.getRoles().stream().flatMap(ur -> ur.getRole().getPermissions().stream())
+                .map(Permission::getName).distinct().collect(Collectors.toList());
     }
 
     private void updateLastLogin(User user) {
-        user.setLastLogin(LocalDateTime.now());
-        userRepository.save(user);
-
-        AuthAccount authAccount = user.getAuthAccount();
-        authAccount.setLastLogin(LocalDateTime.now());
-        authAccountRepository.save(authAccount);
+        user.setLastLogin(LocalDateTime.now()); userRepository.save(user);
+        user.getAuthAccount().setLastLogin(LocalDateTime.now()); authAccountRepository.save(user.getAuthAccount());
     }
 
     private void clearFailedAttempts(User user) {
-        AuthAccount authAccount = user.getAuthAccount();
-        authAccount.setFailedAttempts(0);
-        authAccount.setLockedUntil(null);
-        authAccountRepository.save(authAccount);
+        user.getAuthAccount().setFailedAttempts(0); user.getAuthAccount().setLockedUntil(null);
+        authAccountRepository.save(user.getAuthAccount());
     }
 
     private void handleFailedLogin(String identity) {
-        // FIX: use findByIdentity so failed attempts are tracked even when login
-        // was attempted with an email address
         userRepository.findByIdentity(identity).ifPresent(user -> {
-            AuthAccount authAccount = user.getAuthAccount();
-            authAccount.setFailedAttempts(authAccount.getFailedAttempts() + 1);
-
-            if (authAccount.getFailedAttempts() >= 5) {
-                authAccount.setLockedUntil(LocalDateTime.now().plusMinutes(30));
-            }
-
-            authAccountRepository.save(authAccount);
+            AuthAccount a = user.getAuthAccount();
+            a.setFailedAttempts(a.getFailedAttempts() + 1);
+            if (a.getFailedAttempts() >= 5) a.setLockedUntil(LocalDateTime.now().plusMinutes(30));
+            authAccountRepository.save(a);
         });
     }
 
     private boolean isAccountLocked(User user) {
-        if (user.getAuthAccount() == null || user.getAuthAccount().getLockedUntil() == null) {
-            return false;
-        }
+        if (user.getAuthAccount() == null || user.getAuthAccount().getLockedUntil() == null) return false;
         return user.getAuthAccount().getLockedUntil().isAfter(LocalDateTime.now());
     }
 
     private String generateTOTPSecret() {
-        SecureRandom random = new SecureRandom();
-        byte[] bytes = new byte[20];
-        random.nextBytes(bytes);
-        return base32Encode(bytes);
+        byte[] b = new byte[20]; new SecureRandom().nextBytes(b); return base32Encode(b);
     }
 
-    private static final String BASE32_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
+    private static final String B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     private String base32Encode(byte[] data) {
         StringBuilder sb = new StringBuilder();
-        int buffer = data[0];
-        int next = 1;
-        int bitsLeft = 8;
-        while (bitsLeft > 0 || next < data.length) {
-            if (bitsLeft < 5) {
-                if (next < data.length) {
-                    buffer <<= 8;
-                    buffer |= data[next++] & 0xff;
-                    bitsLeft += 8;
-                } else {
-                    int pad = 5 - bitsLeft;
-                    buffer <<= pad;
-                    bitsLeft += pad;
-                }
+        int buf = data[0], next = 1, bits = 8;
+        while (bits > 0 || next < data.length) {
+            if (bits < 5) {
+                if (next < data.length) { buf <<= 8; buf |= data[next++] & 0xff; bits += 8; }
+                else { buf <<= (5 - bits); bits = 5; }
             }
-            int index = 0x1f & (buffer >> (bitsLeft - 5));
-            bitsLeft -= 5;
-            sb.append(BASE32_CHARS.charAt(index));
+            sb.append(B32.charAt(0x1f & (buf >> (bits - 5)))); bits -= 5;
         }
         return sb.toString();
     }
 
-    private String generateQRCodeUrl(String username, String secret) {
-        return String.format("otpauth://totp/Laundry:%s?secret=%s&issuer=Laundry", username, secret);
+    private String generateQRCodeUrl(String user, String secret) {
+        return String.format("otpauth://totp/Qliina:%s?secret=%s&issuer=Qliina", user, secret);
     }
 
     private List<String> generateBackupCodes() {
-        SecureRandom random = new SecureRandom();
+        SecureRandom rng = new SecureRandom();
         return java.util.stream.Stream.generate(() -> {
-            byte[] bytes = new byte[8];
-            random.nextBytes(bytes);
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes).substring(0, 10);
+            byte[] b = new byte[8]; rng.nextBytes(b);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(b).substring(0, 10);
         }).limit(8).collect(Collectors.toList());
     }
 
     private boolean verifyTOTP(String secret, String code) {
-        // TODO: implement real TOTP verification, e.g. with com.warrenstrange:googleauth
-        throw new BusinessException(
-                "2FA verification is not fully implemented.",
-                "TOTP_NOT_IMPLEMENTED");
+        throw new BusinessException("2FA verification not fully implemented.", "TOTP_NOT_IMPLEMENTED");
     }
 
     private String generateSecureToken() {
-        SecureRandom random = new SecureRandom();
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        byte[] b = new byte[32]; new SecureRandom().nextBytes(b);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
     }
 
     private String hashToken(String token) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
     }
 }

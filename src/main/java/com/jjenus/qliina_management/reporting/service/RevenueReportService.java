@@ -1,6 +1,6 @@
 package com.jjenus.qliina_management.reporting.service;
 
-import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.order.model.Order;
 import com.jjenus.qliina_management.payment.model.OrderPayment;
 import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;

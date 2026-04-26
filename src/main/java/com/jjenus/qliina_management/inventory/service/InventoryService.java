@@ -2,7 +2,7 @@ package com.jjenus.qliina_management.inventory.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
-import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.inventory.dto.*;
 import com.jjenus.qliina_management.inventory.model.*;
 import com.jjenus.qliina_management.inventory.repository.*;

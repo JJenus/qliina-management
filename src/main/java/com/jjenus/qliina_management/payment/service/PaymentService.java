@@ -5,7 +5,7 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.customer.dto.CustomerSummaryDTO;
 import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.customer.repository.CustomerRepository;
-import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.dto.OrderSummaryDTO;
 import com.jjenus.qliina_management.order.model.Order;

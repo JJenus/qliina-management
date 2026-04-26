@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.identity.model;
 
 import com.jjenus.qliina_management.common.BaseTenantEntity;
+import com.jjenus.qliina_management.business.model.Shop;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -47,8 +48,10 @@ public class User extends BaseTenantEntity {
     private AuthAccount authAccount;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
     private Set<UserRole> roles = new HashSet<>();
 
+    @Builder.Default
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<UserPermission> directPermissions = new HashSet<>();
 
@@ -58,6 +61,7 @@ public class User extends BaseTenantEntity {
         joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "shop_id")
     )
+    @Builder.Default
     private Set<Shop> shops = new HashSet<>();
 
     @Column(name = "primary_shop_id")
@@ -68,4 +72,12 @@ public class User extends BaseTenantEntity {
 
     @Column(name = "profile_image")
     private String profileImage;
+    
+    public void addShop(Shop assignShop) {
+      if(this.shops == null) {
+        shops = new HashSet<>();
+      }
+      
+      shops.add(assignShop);
+    }
 }

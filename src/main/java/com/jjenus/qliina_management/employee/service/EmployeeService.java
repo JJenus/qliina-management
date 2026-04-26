@@ -4,7 +4,7 @@ import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
-import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.employee.dto.*;
 import com.jjenus.qliina_management.employee.model.*;
 import com.jjenus.qliina_management.employee.repository.*;
@@ -17,7 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.jjenus.qliina_management.identity.model.Shop;
+import com.jjenus.qliina_management.business.model.Shop;
 import org.springframework.data.domain.PageImpl;
 import java.util.Objects;
 

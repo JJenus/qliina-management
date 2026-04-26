@@ -31,15 +31,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-
+      log.debug("=== Once Per Request Filter===");
         final String authHeader = request.getHeader("Authorization");
         
         boolean allow = shouldNotFilter(request);
 
         if (allow || authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
+            log.debug("No header or allowed route");
+            log.debug("===End Once Per Request Filter===");
             return;
         }
+        
+        log.debug("JWT Bearer token: {}", authHeader);
 
         try {
             final String jwt = authHeader.substring(7);
@@ -62,11 +66,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
+                
+                log.debug("Authentication success");
             }
+
+            log.debug("username: {}, auth context: {}", username, SecurityContextHolder.getContext().getAuthentication());
         } catch (Exception e) {
             log.error("Cannot set user authentication: {}", e.getMessage());
         }
-
+        
+        log.debug("===End Once Per Request Filter===");
+        
         filterChain.doFilter(request, response);
     }
 

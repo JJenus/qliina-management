@@ -14,7 +14,7 @@ logging:
     com.jjenus.qliina_management: DEBUG
     org.springframework.security: DEBUG
     org.hibernate.SQL: ERROR
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.type.descriptor.sql.BasicBinder: ERROR
 
 server:
   port: 8080

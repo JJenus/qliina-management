@@ -5,6 +5,9 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.identity.dto.*;
 import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
+import com.jjenus.qliina_management.business.model.Shop;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -260,7 +263,7 @@ public class UserService {
                 .scope(userPermission.getShopId() != null ? "SHOP" : "BUSINESS")
                 .shopId(userPermission.getShopId())
                 .build())
-        );
+        ); 
         
         return UserPermissionsDTO.builder()
             .userId(user.getId())

@@ -1,7 +1,7 @@
 package com.jjenus.qliina_management.reporting.service;
 
 import com.jjenus.qliina_management.employee.repository.EmployeeShiftRepository;
-import com.jjenus.qliina_management.identity.repository.ShopRepository;
+import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.inventory.repository.ShopStockRepository;
 import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
