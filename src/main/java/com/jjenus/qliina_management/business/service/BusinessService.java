@@ -11,6 +11,8 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import com.jjenus.qliina_management.identity.security.JwtProvider;
+import com.jjenus.qliina_management.payment.service.PaymentMethodService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -49,6 +51,7 @@ public class BusinessService {
     private final PasswordEncoder        passwordEncoder;
     private final JwtProvider            jwtProvider;
     private final UserDetailsService     userDetailsService;
+    private final PaymentMethodService     paymentMethodInitializer;
 
     // -------------------------------------------------------------------------
     // Open registration
@@ -102,6 +105,8 @@ public class BusinessService {
         }
         business = businessRepository.save(business);
         final UUID businessId = business.getId();
+        
+        paymentMethodInitializer.createDefaultMethodsForBusiness(businessId);
 
         // 6. Create initial Shop
         Shop shop = new Shop();

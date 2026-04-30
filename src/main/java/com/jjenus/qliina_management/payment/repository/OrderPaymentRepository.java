@@ -1,3 +1,4 @@
+// ./src/main/java/com/jjenus/qliina_management/payment/repository/OrderPaymentRepository.java
 package com.jjenus.qliina_management.payment.repository;
 
 import com.jjenus.qliina_management.payment.model.OrderPayment;
@@ -18,35 +19,43 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
     
     List<OrderPayment> findByOrderId(UUID orderId);
     
-    @Query("SELECT SUM(op.amount) FROM OrderPayment op WHERE op.orderId = :orderId")
+    @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.orderId = :orderId")
     BigDecimal sumPaymentsByOrderId(@Param("orderId") UUID orderId);
     
-    @Query("SELECT SUM(op.amount) FROM OrderPayment op WHERE op.businessId = :businessId AND (:shopId IS NULL OR op.shopId = :shopId) AND op.paidAt BETWEEN :startDate AND :endDate")
-BigDecimal sumRevenueByDateRange(@Param("businessId") UUID businessId, @Param("shopId") UUID shopId, @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+    @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.businessId = :businessId " +
+           "AND (:shopId IS NULL OR op.shopId = CAST(:shopId AS UUID)) " +
+           "AND op.paidAt BETWEEN :startDate AND :endDate")
+    BigDecimal sumRevenueByDateRange(
+            @Param("businessId") UUID businessId,
+            @Param("shopId") UUID shopId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
     
     @Query("SELECT op FROM OrderPayment op WHERE op.businessId = :businessId AND " +
-           "(:orderId IS NULL OR op.orderId = :orderId) AND " +
-           "(:customerId IS NULL OR op.customerId = :customerId) AND " +
-           "(:shopId IS NULL OR op.shopId = :shopId) AND " +
+           "(:orderId IS NULL OR op.orderId = CAST(:orderId AS UUID)) AND " +
+           "(:customerId IS NULL OR op.customerId = CAST(:customerId AS UUID)) AND " +
+           "(:shopId IS NULL OR op.shopId = CAST(:shopId AS UUID)) AND " +
            "(:method IS NULL OR op.method = :method) AND " +
            "(:status IS NULL OR op.status = :status) AND " +
            "(:fromDate IS NULL OR op.paidAt >= :fromDate) AND " +
            "(:toDate IS NULL OR op.paidAt <= :toDate) AND " +
-           "(:collectedBy IS NULL OR op.collectedBy = :collectedBy)")
-    Page<OrderPayment> findByFilters(@Param("businessId") UUID businessId,
-                                      @Param("orderId") UUID orderId,
-                                      @Param("customerId") UUID customerId,
-                                      @Param("shopId") UUID shopId,
-                                      @Param("method") String method,
-                                      @Param("status") String status,
-                                      @Param("fromDate") LocalDateTime fromDate,
-                                      @Param("toDate") LocalDateTime toDate,
-                                      @Param("collectedBy") UUID collectedBy,
-                                      Pageable pageable);
+           "(:collectedBy IS NULL OR op.collectedBy = CAST(:collectedBy AS UUID))")
+    Page<OrderPayment> findByFilters(
+            @Param("businessId") UUID businessId,
+            @Param("orderId") UUID orderId,
+            @Param("customerId") UUID customerId,
+            @Param("shopId") UUID shopId,
+            @Param("method") String method,
+            @Param("status") String status,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("collectedBy") UUID collectedBy,
+            Pageable pageable);
     
-    @Query("SELECT SUM(op.amount) FROM OrderPayment op WHERE op.shopId = :shopId " +
+    @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.shopId = :shopId " +
            "AND op.paidAt BETWEEN :startDate AND :endDate AND op.method = 'CASH'")
-    BigDecimal sumCashPaymentsByDateRange(@Param("shopId") UUID shopId,
-                                          @Param("startDate") LocalDateTime startDate,
-                                          @Param("endDate") LocalDateTime endDate);
+    BigDecimal sumCashPaymentsByDateRange(
+            @Param("shopId") UUID shopId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }
