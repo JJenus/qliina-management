@@ -1,3 +1,5 @@
+// ./src/main/java/com/jjenus/qliina_management/payment/repository/InvoiceRepository.java
+// Fix the findByFilters method - LocalDate parameters are fine, just clean up the query
 package com.jjenus.qliina_management.payment.repository;
 
 import com.jjenus.qliina_management.payment.model.Invoice;
@@ -23,17 +25,20 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     @Query("SELECT i FROM Invoice i WHERE i.businessId = :businessId " +
            "AND (:accountId IS NULL OR i.accountId = :accountId) " +
            "AND (:status IS NULL OR i.status = :status) " +
-           "AND (cast(:fromDate as date) IS NULL OR i.periodEnd >= :fromDate) " +
-           "AND (cast(:toDate as date) IS NULL OR i.periodStart <= :toDate)")
-    Page<Invoice> findByFilters(@Param("businessId") UUID businessId,
-                                @Param("accountId") UUID accountId,
-                                @Param("status") String status,
-                                @Param("fromDate") LocalDate fromDate,
-                                @Param("toDate") LocalDate toDate,
-                                Pageable pageable);
+           "AND (:fromDate IS NULL OR i.periodEnd >= :fromDate) " +
+           "AND (:toDate IS NULL OR i.periodStart <= :toDate)")
+    Page<Invoice> findByFilters(
+            @Param("businessId") UUID businessId,
+            @Param("accountId") UUID accountId,
+            @Param("status") String status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable);
     
     List<Invoice> findByStatusAndDueDateBefore(String status, LocalDate date);
     
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status = :status AND i.dueDate < :date")
-long countByStatusAndDueDateBefore(@Param("status") String status, @Param("date") LocalDate date);
+    long countByStatusAndDueDateBefore(
+            @Param("status") String status,
+            @Param("date") LocalDate date);
 }

@@ -24,7 +24,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.identity.model.User;
-
+import org.springframework.data.jpa.domain.Specification;
 
 import com.jjenus.qliina_management.notification.model.SMSConfiguration;
 import com.jjenus.qliina_management.common.security.EncryptionService;
@@ -74,19 +74,8 @@ public class PaymentService {
     
     @Transactional(readOnly = true)
     public PageResponse<PaymentDTO> listPayments(UUID businessId, PaymentFilter filter, Pageable pageable) {
-        Page<OrderPayment> page = paymentRepository.findByFilters(
-            businessId,
-            filter != null ? filter.getOrderId() : null,
-            filter != null ? filter.getCustomerId() : null,
-            filter != null ? filter.getShopId() : null,
-            filter != null ? filter.getMethod() : null,
-            filter != null ? filter.getStatus() : null,
-            filter != null ? filter.getFromDate() : null,
-            filter != null ? filter.getToDate() : null,
-            filter != null ? filter.getCollectedBy() : null,
-            pageable
-        );
-        
+        Specification<OrderPayment> spec = PaymentSpecifications.withFilter(businessId, filter);
+        Page<OrderPayment> page = paymentRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToPaymentDTO));
     }
     
@@ -298,11 +287,14 @@ public class PaymentService {
     }
     
     @Transactional(readOnly = true)
-    public PageResponse<CashDrawerSessionDTO> getCashDrawerSessions(UUID businessId, UUID shopId, String status, 
-                                                                     LocalDateTime fromDate, LocalDateTime toDate, 
-                                                                     Pageable pageable) {
-        Page<CashDrawerSession> page = cashDrawerRepository.findByFilters(
-            businessId, shopId, status, fromDate, toDate, pageable);
+    public PageResponse<CashDrawerSessionDTO> getCashDrawerSessions(
+            UUID businessId, UUID shopId, String status, 
+            LocalDateTime fromDate, LocalDateTime toDate, Pageable pageable) {
+        
+        Specification<CashDrawerSession> spec = CashDrawerSessionSpecifications.withFilters(
+            businessId, shopId, status, fromDate, toDate
+        );
+        Page<CashDrawerSession> page = cashDrawerRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToDrawerSessionDTO));
     }
     

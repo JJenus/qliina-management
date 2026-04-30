@@ -307,15 +307,19 @@ public class InventoryService {
     }
     
     @Transactional(readOnly = true)
-    public PageResponse<StockTransactionDTO> listTransactions(UUID businessId, UUID shopId, UUID itemId, 
-                                                               String type, LocalDateTime fromDate, 
-                                                               LocalDateTime toDate, Pageable pageable) {
+    public PageResponse<StockTransactionDTO> listTransactions(
+            UUID businessId, UUID shopId, UUID itemId, 
+            String type, LocalDateTime fromDate, 
+            LocalDateTime toDate, Pageable pageable) {
+        
         StockTransaction.TransactionType transactionType = type != null ? 
             StockTransaction.TransactionType.valueOf(type) : null;
         
-        Page<StockTransaction> page = transactionRepository.findByFilters(
-            businessId, shopId, itemId, transactionType, fromDate, toDate, pageable);
+        Specification<StockTransaction> spec = StockTransactionSpecifications.withFilters(
+            businessId, shopId, itemId, transactionType, fromDate, toDate
+        );
         
+        Page<StockTransaction> page = transactionRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToTransactionDTO));
     }
     

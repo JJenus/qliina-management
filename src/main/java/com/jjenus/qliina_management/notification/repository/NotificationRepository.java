@@ -1,9 +1,11 @@
+// ./src/main/java/com/jjenus/qliina_management/notification/repository/NotificationRepository.java
 package com.jjenus.qliina_management.notification.repository;
 
 import com.jjenus.qliina_management.notification.model.Notification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface NotificationRepository extends JpaRepository<Notification, UUID> {
+public interface NotificationRepository extends JpaRepository<Notification, UUID>, JpaSpecificationExecutor<Notification> {
 
     Page<Notification> findByUserId(UUID userId, Pageable pageable);
 
@@ -45,24 +47,9 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
          + "WHERE n.userId = :userId AND n.status = 'DELIVERED' AND n.readAt IS NULL")
     long countUnreadByUserId(@Param("userId") UUID userId);
 
-    @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId AND "
-         + "(:userId IS NULL OR n.userId = :userId) AND "
-         + "(:type IS NULL OR n.type = :type) AND "
-         + "(:status IS NULL OR n.status = :status) AND "
-         + "(:fromDate IS NULL OR n.createdAt >= :fromDate) AND "
-         + "(:toDate IS NULL OR n.createdAt <= :toDate)")
-    Page<Notification> findByFilters(
-            @Param("businessId") UUID businessId,
-            @Param("userId") UUID userId,
-            @Param("type") Notification.NotificationType type,
-            @Param("status") Notification.NotificationStatus status,
-            @Param("fromDate") LocalDateTime fromDate,
-            @Param("toDate") LocalDateTime toDate,
-            Pageable pageable);
-
     @Query("SELECT n FROM Notification n WHERE n.businessId = :businessId"
          + " AND n.type = 'ORDER_STATUS'"
-         + " AND JSON_EXTRACT(n.data, '$.orderId') = :orderId")
+         + " AND FUNCTION('jsonb_extract_path_text', n.data, 'orderId') = :orderId")
     List<Notification> findByOrderId(
             @Param("businessId") UUID businessId,
             @Param("orderId") String orderId);

@@ -10,6 +10,9 @@ import com.jjenus.qliina_management.reporting.dto.RevenueReportRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import com.jjenus.qliina_management.payment.dto.PaymentFilter;
+import com.jjenus.qliina_management.payment.repository.PaymentSpecifications;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -35,9 +38,14 @@ public class RevenueReportService {
         List<Order> orders = orderRepository.findByDateRange(businessId, startDateTime, endDateTime, null)
             .getContent();
         
-        List<OrderPayment> payments = paymentRepository.findByFilters(
-            businessId, null, null, request.getShopId(), null, "COMPLETED", 
-            startDateTime, endDateTime, null, null).getContent();
+        PaymentFilter paymentFilter = new PaymentFilter();
+        paymentFilter.setShopId(request.getShopId());
+        paymentFilter.setStatus("COMPLETED");
+        paymentFilter.setFromDate(startDateTime);
+        paymentFilter.setToDate(endDateTime);
+        
+        Specification<OrderPayment> paymentSpec = PaymentSpecifications.withFilter(businessId, paymentFilter);
+        List<OrderPayment> payments = paymentRepository.findAll(paymentSpec);
         
         BigDecimal totalRevenue = payments.stream()
             .map(OrderPayment::getAmount)

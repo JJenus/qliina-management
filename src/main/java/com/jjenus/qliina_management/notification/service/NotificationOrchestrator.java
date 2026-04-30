@@ -10,6 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.domain.Specification;
+import com.jjenus.qliina_management.notification.repository.NotificationSpecifications;
+import org.springframework.data.domain.Page;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,21 +29,16 @@ public class NotificationOrchestrator {
     private final NotificationLogService logService;
     private final NotificationDeviceService deviceService;
     
-    // ==================== Notification Operations ====================
-    
-    @Transactional(readOnly = true)
-    public PageResponse<NotificationDTO> getNotifications(UUID businessId, UUID userId, 
-                                                            String type, String status,
-                                                            LocalDateTime fromDate, LocalDateTime toDate,
-                                                            Pageable pageable) {
-        Notification.NotificationType notificationType = type != null ? 
-            Notification.NotificationType.valueOf(type) : null;
-        Notification.NotificationStatus notificationStatus = status != null ?
-            Notification.NotificationStatus.valueOf(status) : null;
+    // ====== Notification Operations ======
+
+    public PageResponse<NotificationDTO> getNotifications(
+            UUID businessId, UUID userId, String type, String status,
+            LocalDateTime fromDate, LocalDateTime toDate, Pageable pageable) {
         
-        var page = notificationRepository.findByFilters(
-            businessId, userId, notificationType, notificationStatus, fromDate, toDate, pageable);
-        
+        Specification<Notification> spec = NotificationSpecifications.withFilters(
+            businessId, userId, type, status, fromDate, toDate
+        );
+        Page<Notification> page = notificationRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToDTO));
     }
     
@@ -71,7 +69,7 @@ public class NotificationOrchestrator {
         return notifications.isEmpty() ? null : mapToDTO(notifications.get(0));
     }
     
-    // ==================== Template Operations ====================
+    // ====== Template Operations ======
     
     @Transactional(readOnly = true)
     public List<NotificationTemplateDTO> getTemplates(UUID businessId) {
@@ -93,7 +91,7 @@ public class NotificationOrchestrator {
         templateService.deleteTemplate(templateId);
     }
     
-    // ==================== Device Operations ====================
+    // ====== Device Operations ======
     
     @Transactional
     public UserDeviceDTO registerDevice(UUID businessId, UUID userId, RegisterDeviceRequest request) {
@@ -110,7 +108,7 @@ public class NotificationOrchestrator {
         return deviceService.getUserDevices(userId);
     }
     
-    // ==================== Logs & Analytics ====================
+    // ====== Logs & Analytics ======
     
     @Transactional(readOnly = true)
     public PageResponse<NotificationLogDTO> getNotificationLogs(UUID businessId, String channel,
@@ -124,14 +122,14 @@ public class NotificationOrchestrator {
         return logService.getDeliveryStats(businessId, startDate, endDate);
     }
     
-    // ==================== Test Operations ====================
+    // ====== Test Operations ======
     
     @Transactional
     public void testNotification(UUID businessId, TestNotificationRequest request) {
         notificationSender.sendTest(businessId, request);
     }
     
-    // ==================== Helper Methods ====================
+    // ====== Helper Methods ======
     
     private NotificationDTO mapToDTO(Notification notification) {
         return NotificationDTO.builder()

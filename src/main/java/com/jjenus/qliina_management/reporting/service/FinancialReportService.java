@@ -9,6 +9,9 @@ import com.jjenus.qliina_management.reporting.dto.ProfitLossDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import com.jjenus.qliina_management.payment.dto.PaymentFilter;
+import com.jjenus.qliina_management.payment.repository.PaymentSpecifications;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -24,7 +27,7 @@ public class FinancialReportService {
     
     private final OrderRepository orderRepository;
     private final OrderPaymentRepository paymentRepository;
-    
+
     public ProfitLossDTO generateProfitLoss(UUID businessId, DateRangeRequest request) {
         LocalDateTime startDateTime = request.getStartDate().atStartOfDay();
         LocalDateTime endDateTime = request.getEndDate().atTime(23, 59, 59);
@@ -32,9 +35,13 @@ public class FinancialReportService {
         List<Order> orders = orderRepository.findByDateRange(businessId, startDateTime, endDateTime, null)
             .getContent();
         
-        List<OrderPayment> payments = paymentRepository.findByFilters(
-            businessId, null, null, null, null, "COMPLETED", 
-            startDateTime, endDateTime, null, null).getContent();
+        PaymentFilter paymentFilter = new PaymentFilter();
+        paymentFilter.setStatus("COMPLETED");
+        paymentFilter.setFromDate(startDateTime);
+        paymentFilter.setToDate(endDateTime);
+        
+        Specification<OrderPayment> paymentSpec = PaymentSpecifications.withFilter(businessId, paymentFilter);
+        List<OrderPayment> payments = paymentRepository.findAll(paymentSpec);
         
         // Calculate revenue
         BigDecimal totalRevenue = payments.stream()
@@ -56,7 +63,7 @@ public class FinancialReportService {
                 .build())
             .collect(Collectors.toList());
         
-        // Calculate expenses (simplified - in real app, would come from expense tracking module)
+        // Calculate expenses
         List<ProfitLossDTO.ExpenseCategoryDTO> expenseCategories = calculateExpenseCategories(businessId, startDateTime, endDateTime);
         List<ProfitLossDTO.ExpenseDetailDTO> expenseDetails = calculateExpenseDetails(businessId, startDateTime, endDateTime);
         
@@ -68,7 +75,6 @@ public class FinancialReportService {
         double grossMargin = totalRevenue.compareTo(BigDecimal.ZERO) > 0 ?
             grossProfit.divide(totalRevenue, 4, RoundingMode.HALF_UP).doubleValue() * 100 : 0;
         
-        // Net profit (after additional costs like taxes)
         BigDecimal netProfit = grossProfit;
         double netMargin = grossMargin;
         
@@ -96,7 +102,7 @@ public class FinancialReportService {
     private List<ProfitLossDTO.ExpenseCategoryDTO> calculateExpenseCategories(
             UUID businessId, LocalDateTime startDate, LocalDateTime endDate) {
         
-        // In a real implementation, this would query actual expense records
+        //todo: In a real implementation, this would query actual expense records
         // For now, return sample data structure
         List<ProfitLossDTO.ExpenseCategoryDTO> categories = new ArrayList<>();
         

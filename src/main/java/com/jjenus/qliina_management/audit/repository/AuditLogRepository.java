@@ -1,3 +1,4 @@
+// ./src/main/java/com/jjenus/qliina_management/audit/repository/AuditLogRepository.java
 package com.jjenus.qliina_management.audit.repository;
 
 import com.jjenus.qliina_management.audit.model.AuditLog;
@@ -23,22 +24,23 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     
     Page<AuditLog> findByEntityTypeAndEntityId(String entityType, UUID entityId, Pageable pageable);
     
-    @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId AND a.entityType = :entityType AND a.timestamp < :timestamp")
-List<AuditLog> findByBusinessIdAndEntityTypeAndTimestampBefore(
-    @Param("businessId") UUID businessId,
-    @Param("entityType") String entityType,
-    @Param("timestamp") LocalDateTime timestamp);
+    @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId " +
+           "AND a.entityType = :entityType AND a.timestamp < :timestamp")
+    List<AuditLog> findByBusinessIdAndEntityTypeAndTimestampBefore(
+            @Param("businessId") UUID businessId,
+            @Param("entityType") String entityType,
+            @Param("timestamp") LocalDateTime timestamp);
     
     @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId AND " +
-           "(:userId IS NULL OR a.userId = :userId) AND " +
-           "(:entityType IS NULL OR a.entityType = :entityType) AND " +
-           "(:entityId IS NULL OR a.entityId = :entityId) AND " +
-           "(:action IS NULL OR a.action LIKE %:action%) AND " +
-           "(:category IS NULL OR a.category = :category) AND " +
-           "(:severity IS NULL OR a.severity = :severity) AND " +
-           "(:fromDate IS NULL OR a.timestamp >= :fromDate) AND " +
-           "(:toDate IS NULL OR a.timestamp <= :toDate) AND " +
-           "(:ipAddress IS NULL OR a.ipAddress = :ipAddress)")
+       "(:userId IS NULL OR a.userId = :userId) AND " +
+       "(:entityType IS NULL OR a.entityType = :entityType) AND " +
+       "(:entityId IS NULL OR a.entityId = :entityId) AND " +
+       "(:action IS NULL OR a.action LIKE CONCAT('%', :action, '%')) AND " +
+       "(:category IS NULL OR a.category = :category) AND " +
+       "(:severity IS NULL OR a.severity = :severity) AND " +
+       "(:fromDate IS NULL OR a.timestamp >= :fromDate) AND " +
+       "(:toDate IS NULL OR a.timestamp <= :toDate) AND " +
+       "(:ipAddress IS NULL OR a.ipAddress = :ipAddress)")
     Page<AuditLog> searchAuditLogs(
             @Param("businessId") UUID businessId,
             @Param("userId") UUID userId,
@@ -54,19 +56,22 @@ List<AuditLog> findByBusinessIdAndEntityTypeAndTimestampBefore(
     
     @Query("SELECT a FROM AuditLog a WHERE a.entityType = :entityType AND a.entityId = :entityId " +
            "ORDER BY a.timestamp DESC")
-    List<AuditLog> findEntityHistory(@Param("entityType") String entityType, 
-                                      @Param("entityId") UUID entityId);
+    List<AuditLog> findEntityHistory(
+            @Param("entityType") String entityType,
+            @Param("entityId") UUID entityId);
     
     @Query("SELECT COUNT(a) FROM AuditLog a WHERE a.businessId = :businessId " +
            "AND a.timestamp >= :since")
-    long countRecentActivity(@Param("businessId") UUID businessId, 
-                              @Param("since") LocalDateTime since);
+    long countRecentActivity(
+            @Param("businessId") UUID businessId,
+            @Param("since") LocalDateTime since);
     
     @Query("SELECT a.action, COUNT(a) FROM AuditLog a WHERE a.businessId = :businessId " +
            "AND a.timestamp BETWEEN :startDate AND :endDate GROUP BY a.action")
-    List<Object[]> getActivitySummary(@Param("businessId") UUID businessId,
-                                       @Param("startDate") LocalDateTime startDate,
-                                       @Param("endDate") LocalDateTime endDate);
+    List<Object[]> getActivitySummary(
+            @Param("businessId") UUID businessId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
     
     @Query("SELECT a FROM AuditLog a WHERE a.retentionUntil < :cutoff AND a.retentionUntil IS NOT NULL")
     List<AuditLog> findExpiredLogs(@Param("cutoff") LocalDateTime cutoff);
@@ -75,13 +80,15 @@ List<AuditLog> findByBusinessIdAndEntityTypeAndTimestampBefore(
     @Query("DELETE FROM AuditLog a WHERE a.id IN :ids")
     void deleteByIds(@Param("ids") List<UUID> ids);
     
-    
-    @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId AND a.timestamp BETWEEN :startDate AND :endDate")
-List<AuditLog> findByBusinessIdAndTimestampBetween(@Param("businessId") UUID businessId, 
-                                                    @Param("startDate") LocalDateTime startDate, 
-                                                    @Param("endDate") LocalDateTime endDate);
+    @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId " +
+           "AND a.timestamp BETWEEN :startDate AND :endDate")
+    List<AuditLog> findByBusinessIdAndTimestampBetween(
+            @Param("businessId") UUID businessId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 
-@Query("SELECT a FROM AuditLog a WHERE a.entityType = :entityType AND a.entityId = :entityId")
-List<AuditLog> findByEntityTypeAndEntityId(@Param("entityType") String entityType, 
-                                            @Param("entityId") UUID entityId);
+    @Query("SELECT a FROM AuditLog a WHERE a.entityType = :entityType AND a.entityId = :entityId")
+    List<AuditLog> findByEntityTypeAndEntityId(
+            @Param("entityType") String entityType,
+            @Param("entityId") UUID entityId);
 }

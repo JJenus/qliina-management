@@ -15,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.identity.model.User;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -240,16 +241,17 @@ public class QualityService {
     }
     
     @Transactional(readOnly = true)
+
     public PageResponse<DefectDTO> listDefects(UUID businessId, DefectFilter filter, Pageable pageable) {
-        Page<Defect> page = defectRepository.findByFilters(
+        Specification<Defect> spec = DefectSpecifications.withFilters(
             businessId,
             filter != null ? filter.getStatus() : null,
             filter != null ? filter.getSeverity() : null,
             filter != null ? filter.getFromDate() : null,
             filter != null ? filter.getToDate() : null,
-            filter != null ? filter.getAssignedTo() : null,
-            pageable
+            filter != null ? filter.getAssignedTo() : null
         );
+        Page<Defect> page = defectRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToDefectDTO));
     }
     

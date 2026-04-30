@@ -1,10 +1,10 @@
-// ./src/main/java/com/jjenus/qliina_management/payment/repository/OrderPaymentRepository.java
 package com.jjenus.qliina_management.payment.repository;
 
 import com.jjenus.qliina_management.payment.model.OrderPayment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID> {
+public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID>, JpaSpecificationExecutor<OrderPayment> {
     
     List<OrderPayment> findByOrderId(UUID orderId);
     
@@ -23,7 +23,7 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
     BigDecimal sumPaymentsByOrderId(@Param("orderId") UUID orderId);
     
     @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.businessId = :businessId " +
-           "AND (:shopId IS NULL OR op.shopId = CAST(:shopId AS UUID)) " +
+           "AND (:shopId IS NULL OR op.shopId = :shopId) " +
            "AND op.paidAt BETWEEN :startDate AND :endDate")
     BigDecimal sumRevenueByDateRange(
             @Param("businessId") UUID businessId,
@@ -31,31 +31,18 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
     
-    @Query("SELECT op FROM OrderPayment op WHERE op.businessId = :businessId AND " +
-           "(:orderId IS NULL OR op.orderId = CAST(:orderId AS UUID)) AND " +
-           "(:customerId IS NULL OR op.customerId = CAST(:customerId AS UUID)) AND " +
-           "(:shopId IS NULL OR op.shopId = CAST(:shopId AS UUID)) AND " +
-           "(:method IS NULL OR op.method = :method) AND " +
-           "(:status IS NULL OR op.status = :status) AND " +
-           "(:fromDate IS NULL OR op.paidAt >= :fromDate) AND " +
-           "(:toDate IS NULL OR op.paidAt <= :toDate) AND " +
-           "(:collectedBy IS NULL OR op.collectedBy = CAST(:collectedBy AS UUID))")
-    Page<OrderPayment> findByFilters(
-            @Param("businessId") UUID businessId,
-            @Param("orderId") UUID orderId,
-            @Param("customerId") UUID customerId,
-            @Param("shopId") UUID shopId,
-            @Param("method") String method,
-            @Param("status") String status,
-            @Param("fromDate") LocalDateTime fromDate,
-            @Param("toDate") LocalDateTime toDate,
-            @Param("collectedBy") UUID collectedBy,
-            Pageable pageable);
-    
     @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.shopId = :shopId " +
            "AND op.paidAt BETWEEN :startDate AND :endDate AND op.method = 'CASH'")
     BigDecimal sumCashPaymentsByDateRange(
             @Param("shopId") UUID shopId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
+    
+    Page<OrderPayment> findByBusinessId(UUID businessId, Pageable pageable);
+    
+    @Query("SELECT op FROM OrderPayment op WHERE op.businessId = :businessId AND op.shopId = :shopId")
+    Page<OrderPayment> findByBusinessIdAndShopId(
+            @Param("businessId") UUID businessId,
+            @Param("shopId") UUID shopId,
+            Pageable pageable);
 }
