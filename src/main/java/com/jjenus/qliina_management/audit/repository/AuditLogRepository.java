@@ -91,4 +91,13 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     List<AuditLog> findByEntityTypeAndEntityId(
             @Param("entityType") String entityType,
             @Param("entityId") UUID entityId);
+            
+    @Query("SELECT a FROM AuditLog a WHERE a.entityType = :entityType " +
+           "AND a.entityId = :entityId AND a.userId = :userId " +
+           "ORDER BY a.timestamp DESC")
+    Page<AuditLog> findByEntityTypeAndEntityIdAndUserId(
+            @Param("entityType") String entityType,
+            @Param("entityId") UUID entityId,
+            @Param("userId") UUID userId,
+            Pageable pageable);
 }

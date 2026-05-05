@@ -74,8 +74,7 @@ List<Object[]> getEmployeeRankings(@Param("businessId") UUID businessId,
 
     @Query("SELECT COUNT(qc) FROM QualityCheck qc WHERE qc.checkedBy = :employeeId " +
             "AND qc.checkedAt BETWEEN :startDate AND :endDate")
-    Long countItemsProcessedByEmployee(@Param("employeeId") UUID employeeId,
-                                       @Param("startDate") LocalDateTime startDate,
+    Long countItemsProcessedByEmployee(@Param("employeeId") UUID employeeId, @Param("startDate") LocalDateTime startDate,
                                        @Param("endDate") LocalDateTime endDate);
 
     @Query("SELECT COUNT(qc) FROM QualityCheck qc WHERE qc.checkedBy = :employeeId " +

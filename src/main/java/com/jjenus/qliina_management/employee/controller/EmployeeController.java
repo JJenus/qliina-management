@@ -22,6 +22,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import com.jjenus.qliina_management.common.util.SecurityContextUtil;
+import com.jjenus.qliina_management.identity.service.UserService;
+import com.jjenus.qliina_management.identity.dto.AssignShopsRequest;
+import com.jjenus.qliina_management.identity.dto.UserShopAssignmentDTO;
 
 import java.security.Principal;
 import java.time.LocalDate;
@@ -35,6 +39,7 @@ import java.util.UUID;
 public class EmployeeController {
     
     private final EmployeeService employeeService;
+    private final UserService userService;
     
     // ==================== Time & Attendance ====================
     
@@ -81,7 +86,7 @@ public class EmployeeController {
             
             @Valid @RequestBody ClockInRequest request) {
         // In real implementation, get employee ID from userDetails
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.clockIn(businessId, employeeId, request));
     }
     
@@ -104,7 +109,7 @@ public class EmployeeController {
             @AuthenticationPrincipal UserDetails userDetails,
             
             @Valid @RequestBody ClockOutRequest request) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.clockOut(businessId, employeeId, request));
     }
     
@@ -125,7 +130,7 @@ public class EmployeeController {
             
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.startBreak(businessId, employeeId));
     }
     
@@ -146,7 +151,7 @@ public class EmployeeController {
             
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.endBreak(businessId, employeeId));
     }
     
@@ -167,7 +172,7 @@ public class EmployeeController {
             
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         // This method would need to be added to the service
         return ResponseEntity.ok(employeeService.getCurrentShift(employeeId));
     }
@@ -222,7 +227,7 @@ public class EmployeeController {
             
             @Parameter(description = "End date (ISO format)", required = true, example = "2026-03-07")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.getTimesheet(employeeId, startDate, endDate));
     }
     
@@ -294,7 +299,7 @@ public class EmployeeController {
             
             @Parameter(description = "End date (ISO format)", required = true, example = "2026-03-07")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         // This method would need to be added to the service
         return ResponseEntity.ok(employeeService.getEmployeeSchedule(employeeId, startDate, endDate));
     }
@@ -395,7 +400,7 @@ public class EmployeeController {
             
             @Parameter(description = "End date (ISO format)", required = true, example = "2026-03-07")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.getEmployeeTargets(employeeId, startDate, endDate));
     }
     
@@ -473,7 +478,7 @@ public class EmployeeController {
             
             @Parameter(description = "End date (ISO format)", required = true, example = "2026-03-31")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        UUID employeeId = getCurrentEmployeeId(userDetails);
+        UUID employeeId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(employeeService.getEmployeePerformance(employeeId, startDate, endDate));
     }
     
@@ -558,11 +563,36 @@ public class EmployeeController {
         return ResponseEntity.ok(employeeService.listEmployees(businessId, shopId, role, search, pageable));
     }
     
-    // ==================== Helper Methods ====================
-    
-    private UUID getCurrentEmployeeId(UserDetails userDetails) {
-        // In real implementation, fetch employee ID from user repository
-        // For now, return placeholder
-        return UUID.fromString("00000000-0000-0000-0000-000000000000");
-    }
+    // In EmployeeController.java - Add these endpoints:
+
+@Operation(summary = "Get employee shops")
+@GetMapping("/{employeeId}/shops")
+@PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.view')")
+public ResponseEntity<List<UserShopAssignmentDTO>> getEmployeeShops(
+        @PathVariable UUID businessId,
+        @PathVariable UUID employeeId) {
+    return ResponseEntity.ok(userService.getUserShopAssignments(employeeId));
+}
+
+@Operation(summary = "Assign employee to shops")
+@PostMapping("/{employeeId}/shops")
+@PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.manage')")
+public ResponseEntity<SuccessResponse> assignEmployeeShops(
+        @PathVariable UUID businessId,
+        @PathVariable UUID employeeId,
+        @Valid @RequestBody AssignShopsRequest request) {
+    userService.assignShops(employeeId, request);
+    return ResponseEntity.ok(SuccessResponse.of("Shops assigned"));
+}
+
+@Operation(summary = "Remove employee from shop")
+@DeleteMapping("/{employeeId}/shops/{shopId}")
+@PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.manage')")
+public ResponseEntity<SuccessResponse> removeEmployeeFromShop(
+        @PathVariable UUID businessId,
+        @PathVariable UUID employeeId,
+        @PathVariable UUID shopId) {
+    userService.removeFromShop(employeeId, shopId);
+    return ResponseEntity.ok(SuccessResponse.of("Removed from shop"));
+}
 }

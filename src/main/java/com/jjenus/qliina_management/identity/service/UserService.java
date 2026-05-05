@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -48,6 +49,22 @@ public class UserService {
         }
     }
     
+
+    @Transactional(readOnly = true)
+    public List<RoleDTO> getAvailableRoles(UUID businessId) {
+        return roleRepository.findAllAvailableByBusinessId(businessId)
+            .stream()
+            .map(role -> RoleDTO.builder()
+                .id(role.getId())
+                .name(role.getName())
+                .description(role.getDescription())
+                .type(role.getType().toString())
+                .businessId(role.getBusinessId())
+                .isSystem(role.getIsSystem())
+                .build())
+            .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<UserSummaryDTO> listUsers(UUID businessId, String search, Pageable pageable) {
         Page<User> page;
@@ -274,29 +291,38 @@ public class UserService {
             .permissionDetails(permissionDetails)
             .build();
     }
-    
+
     @Transactional
     public void assignRoles(UUID userId, AssignRolesRequest request) {
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new IllegalStateException("user does not exist"));
         
-        // Clear existing roles
-        user.getRoles().clear();
+        // Clear existing roles for this business
+        user.getRoles().removeIf(ur -> ur.getBusinessId().equals(user.getBusinessId()));
         
         // Assign new roles
-        for (AssignRolesRequest.RoleAssignment assignment : request.getRoles()) {
-            Role role = roleRepository.findById(assignment.getRoleId())
-                .orElseThrow(() -> new BusinessException("Role not found", "ROLE_NOT_FOUND"));
-            
-            UserRole userRole = new UserRole();
-            userRole.setUser(user);
-            userRole.setRole(role);
-            userRole.setBusinessId(user.getBusinessId());
-            userRole.setShopId(assignment.getShopId());
-            user.getRoles().add(userRole);
+        if (request.getRoles() != null && !request.getRoles().isEmpty()) {
+            for (AssignRolesRequest.RoleAssignment assignment : request.getRoles()) {
+                Role role = roleRepository.findById(assignment.getRoleId())
+                    .orElseThrow(() -> new BusinessException("Role not found", "ROLE_NOT_FOUND"));
+                
+                // Check for duplicates
+                boolean alreadyExists = user.getRoles().stream()
+                    .anyMatch(ur -> ur.getRole().getId().equals(role.getId()) 
+                        && Objects.equals(ur.getShopId(), assignment.getShopId()));
+                
+                if (!alreadyExists) {
+                    UserRole userRole = new UserRole();
+                    userRole.setUser(user);
+                    userRole.setRole(role);
+                    userRole.setBusinessId(user.getBusinessId());
+                    userRole.setShopId(assignment.getShopId());
+                    user.getRoles().add(userRole);
+                }
+            }
         }
         
         userRepository.save(user);
+        log.info("Roles updated for user: {}", userId);
     }
     
     @Transactional

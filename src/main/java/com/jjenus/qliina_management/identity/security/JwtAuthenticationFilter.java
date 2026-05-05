@@ -42,8 +42,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             log.debug("===End Once Per Request Filter===");
             return;
         }
-        
-        log.debug("JWT Bearer token: {}", authHeader);
 
         try {
             final String jwt = authHeader.substring(7);

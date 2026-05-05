@@ -16,7 +16,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "users", indexes = {
-    @Index(name = "idx_user_username", columnList = "username", unique = true),
+    @Index(name = "idx_user_username", columnList = "username"),
     @Index(name = "idx_user_email", columnList = "email"),
     @Index(name = "idx_user_phone", columnList = "phone")
 })
@@ -28,11 +28,11 @@ import java.util.UUID;
 public class User extends BaseTenantEntity {
     @Column(nullable = false, unique = true)
     private String username;
-
-    @Column(name = "email")
+    
+    @Column(name = "email", unique = true)
     private String email;
 
-    @Column(name = "phone", nullable = false)
+    @Column(name = "phone", nullable = false, unique = true)
     private String phone;
 
     @Column(name = "first_name", nullable = false)
@@ -47,12 +47,22 @@ public class User extends BaseTenantEntity {
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private AuthAccount authAccount;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(
+        mappedBy = "user",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true,
+        fetch = FetchType.LAZY
+    )
     @Builder.Default
     private Set<UserRole> roles = new HashSet<>();
-
+    
+    @OneToMany(
+        mappedBy = "user",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true,
+        fetch = FetchType.LAZY
+    )
     @Builder.Default
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<UserPermission> directPermissions = new HashSet<>();
 
     @ManyToMany

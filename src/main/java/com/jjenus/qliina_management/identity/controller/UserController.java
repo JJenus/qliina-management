@@ -366,4 +366,20 @@ public class UserController {
         userService.removeFromShop(userId, shopId);
         return ResponseEntity.ok(SuccessResponse.of("User removed from shop successfully"));
     }
+    
+    @Operation(
+        summary = "Get available roles",
+        description = "Get all available roles for the business (platform + business-specific)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved roles"),
+        @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @GetMapping("/available-roles")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'user.view')")
+    public ResponseEntity<List<RoleDTO>> getAvailableRoles(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId) {
+        return ResponseEntity.ok(userService.getAvailableRoles(businessId));
+    }
 } 

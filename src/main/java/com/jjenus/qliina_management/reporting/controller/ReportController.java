@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import com.jjenus.qliina_management.common.util.SecurityContextUtil;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -37,6 +38,7 @@ public class ReportController {
     private final EmployeeReportService employeeService;
     private final ReportExportService exportService;
     private final DashboardService dashboardService;
+    private final WorkerDashboardService workerDashboardService;
     
     @Operation(
         summary = "Get dashboard summary",
@@ -56,6 +58,26 @@ public class ReportController {
             @Parameter(description = "Shop ID to filter dashboard data")
             @RequestParam(required = false) UUID shopId) {
         return ResponseEntity.ok(dashboardService.getDashboardSummary(businessId, shopId));
+    }
+
+    @Operation(
+        summary = "Get worker dashboard",
+        description = "Returns role-specific dashboard metrics for the authenticated worker. " +
+                     "Data is strictly scoped to the worker's role and own activity — " +
+                     "no business-wide metrics are exposed."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Worker dashboard retrieved"),
+        @ApiResponse(responseCode = "403", description = "Access denied — not a worker role",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/worker-dashboard")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.view')")
+    public ResponseEntity<WorkerDashboardDTO> getWorkerDashboard(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId) {
+        UUID workerId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(workerDashboardService.getWorkerDashboard(businessId, workerId));
     }
     
     @Operation(

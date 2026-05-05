@@ -34,7 +34,7 @@ public class OrderController {
     
     private final OrderService orderService;
     
-    // ==================== Basic Order Operations ====================
+    // ======= Basic Order Operations =======
     
     @Operation(
         summary = "List orders",
@@ -184,7 +184,7 @@ public class OrderController {
         return ResponseEntity.ok(SuccessResponse.of("Order cancelled successfully"));
     }
     
-    // ==================== Status Management ====================
+    // ======= Status Management =======
     
     @Operation(
         summary = "Update order status",
@@ -235,7 +235,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.updateItemStatus(orderId, itemId, request));
     }
     
-    // ==================== Timeline & Notes ====================
+    // ======= Timeline & Notes =======
     
     @Operation(
         summary = "Get order timeline",
@@ -279,7 +279,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.addOrderNote(orderId, request));
     }
     
-    // ==================== Transfer Operations ====================
+    // ======= Transfer Operations =======
     
     @Operation(
         summary = "Transfer order",
@@ -304,7 +304,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.transferOrder(orderId, request));
     }
     
-    // ==================== Analytics & Reporting ====================
+    // ======= Analytics & Reporting =======
     
     @Operation(
         summary = "Get daily order summary",
@@ -325,7 +325,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getDailyOrderSummary(businessId, date));
     }
     
-    // ==================== Missing Endpoints from Service ====================
+    // ======= Missing Endpoints from Service =======
     
     @Operation(
         summary = "Count pending orders",
@@ -372,7 +372,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.countOrdersByDateRange(businessId, shopId, startDate, endDate));
     }
     
-    // ==================== Attachment Operations ====================
+    // ======= Attachment Operations =======
     
     @Operation(
         summary = "Upload attachment",
@@ -426,7 +426,7 @@ public class OrderController {
         return ResponseEntity.ok(SuccessResponse.of("Attachment deleted successfully"));
     }
     
-    // ==================== Bulk Operations ====================
+    // ======= Bulk Operations =======
     
     @Operation(
         summary = "Bulk status update",

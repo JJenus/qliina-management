@@ -52,6 +52,7 @@ public class BusinessService {
     private final JwtProvider            jwtProvider;
     private final UserDetailsService     userDetailsService;
     private final PaymentMethodService     paymentMethodInitializer;
+    private final ServiceCatalogService     serviceCatalogService;
 
     // -------------------------------------------------------------------------
     // Open registration
@@ -107,6 +108,8 @@ public class BusinessService {
         final UUID businessId = business.getId();
         
         paymentMethodInitializer.createDefaultMethodsForBusiness(businessId);
+       
+        serviceCatalogService.createDefaultsForBusiness(businessId);
 
         // 6. Create initial Shop
         Shop shop = new Shop();

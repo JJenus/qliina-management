@@ -137,4 +137,11 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
     Integer countByEmployeeIdAndDateRange(@Param("employeeId") UUID employeeId,
                                           @Param("startDate") LocalDateTime startDate,
                                           @Param("endDate") LocalDateTime endDate);
+     @Query("SELECT o FROM Order o WHERE o.businessId = :businessId " +
+       "AND o.shopId = :shopId AND o.status IN :statuses")
+Page<Order> findByBusinessIdAndShopIdAndStatusIn(
+        @Param("businessId") UUID businessId,
+        @Param("shopId") UUID shopId,
+        @Param("statuses") List<Order.OrderStatus> statuses,
+        Pageable pageable);
 }
