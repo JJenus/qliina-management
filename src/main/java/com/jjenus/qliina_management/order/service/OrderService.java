@@ -131,7 +131,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             String itemTrackingNumber = IdGenerator.generateQrCode("item");
             
             item.setOrder(order);
-            item.setItemNumber(itemTrackingNumber.split("-")[1]);
+            item.setItemNumber(itemTrackingNumber.substring(3));
             item.setBarcode(itemTrackingNumber);
             item.setServiceType(itemDto.getServiceTypeId().toString());
             item.setGarmentType(itemDto.getGarmentTypeId() != null ? itemDto.getGarmentTypeId().toString() : null);

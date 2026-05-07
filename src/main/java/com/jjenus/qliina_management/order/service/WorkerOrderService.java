@@ -350,8 +350,8 @@ public class WorkerOrderService {
         if (itemId == null || itemId.trim().isEmpty()) {
             throw new BusinessException("Item ID is required", "INVALID_ITEM_ID");
         }
-    
-        itemId = itemId.trim().toUpperCase();
+
+        itemId = itemId.replaceAll("\\s+", "").toUpperCase();
     
         // 1. Try UUID (internal system use)
         try {
@@ -363,7 +363,10 @@ public class WorkerOrderService {
         }
     
         // 2. Validate checksum BEFORE hitting DB
-        if (!IdGenerator.isValidWithChecksum(itemId)) {
+        String id = itemId.contains("-") ? itemId.substring(3) : itemId;
+        log.debug("Item ID: {}", id);
+
+        if (!IdGenerator.isValidWithChecksum(id)) {
             throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
         }
     
