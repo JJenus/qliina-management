@@ -3,7 +3,7 @@ package com.jjenus.qliina_management.order.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
-import com.jjenus.qliina_management.common.util.ItemIdGenerator;
+import com.jjenus.qliina_management.common.util.IdGenerator;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.dto.WorkerItemDTO;
@@ -179,7 +179,7 @@ public class WorkerOrderService {
         item.getStatusHistory().add(history);
 
         if (item.getBarcode() == null) {
-            item.setBarcode(ItemIdGenerator.generate());
+            item.setBarcode(IdGenerator.generateQrCode("item"));
         }
 
         orderItemRepository.save(item);
@@ -346,22 +346,52 @@ public class WorkerOrderService {
     }
 
     private OrderItem findItem(UUID businessId, String itemId) {
+
+        if (itemId == null || itemId.trim().isEmpty()) {
+            throw new BusinessException("Item ID is required", "INVALID_ITEM_ID");
+        }
+    
+        itemId = itemId.trim().toUpperCase();
+    
+        // 1. Try UUID (internal system use)
         try {
             UUID uuid = UUID.fromString(itemId);
             return orderItemRepository.findById(uuid)
                     .orElseThrow(() -> new BusinessException("Item not found", "ITEM_NOT_FOUND"));
-        } catch (IllegalArgumentException e) {
-            return orderItemRepository.findByBusinessIdAndBarcode(businessId, itemId);
+        } catch (IllegalArgumentException ignored) {
+            // Not a UUID → continue
         }
+    
+        // 2. Validate checksum BEFORE hitting DB
+        if (!IdGenerator.isValidWithChecksum(itemId)) {
+            throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
+        }
+    
+        // 3. Safe to query
+        return orderItemRepository.findByBusinessIdAndCode(businessId, itemId).orElseThrow(()-> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
     }
 
     private String determineAccessMethod(String itemId) {
+
+        if (itemId == null || itemId.trim().isEmpty()) {
+            return "INVALID_INPUT";
+        }
+    
+        itemId = itemId.replaceAll("\\s+", "").toUpperCase();
+    
+        // 1. UUID → internal system usage
         try {
             UUID.fromString(itemId);
-            return "MANUAL_LOOKUP";
-        } catch (IllegalArgumentException e) {
-            return ItemIdGenerator.isValid(itemId) ? "QR_SCAN" : "MANUAL_LOOKUP";
+            return "UUID_AUTOMATED_LOOKUP";
+        } catch (IllegalArgumentException ignored) {}
+    
+        // 2. Checksum-valid ID → trusted input
+        if (IdGenerator.isValidWithChecksum(itemId)) {
+            return itemId.startsWith("QL-") ? "QR_SCAN" : "MANUAL_ENTRY_VALID";
         }
+    
+        // 3. Fallback → invalid / mistyped
+        return "MANUAL_ENTRY_INVALID";
     }
 
     private void recordInteraction(UUID workerId, UUID itemId, String accessMethod) {

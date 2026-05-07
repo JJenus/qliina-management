@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 import java.time.LocalDateTime;
 
 
@@ -20,6 +21,17 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
     
     @Query("SELECT oi FROM OrderItem oi WHERE oi.order.businessId = :businessId AND oi.barcode = :barcode")
     OrderItem findByBusinessIdAndBarcode(@Param("businessId") UUID businessId, @Param("barcode") String barcode);
+    
+    @Query("""
+        SELECT oi 
+        FROM OrderItem oi 
+        WHERE oi.order.businessId = :businessId 
+          AND (oi.barcode = :code OR oi.itemNumber = :code)
+    """)
+    Optional<OrderItem> findByBusinessIdAndCode(
+        @Param("businessId") UUID businessId,
+        @Param("code") String code
+    );
     
     @Query("SELECT COUNT(oi) FROM OrderItem oi WHERE oi.order.shopId = :shopId AND oi.status = :status")
     Long countByShopIdAndStatus(@Param("shopId") UUID shopId, @Param("status") OrderItem.ItemStatus status);

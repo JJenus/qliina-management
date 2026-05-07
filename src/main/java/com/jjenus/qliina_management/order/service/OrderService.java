@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.order.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.common.util.IdGenerator;
 import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.customer.repository.CustomerRepository;
@@ -101,8 +102,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         order.setBusinessId(businessId);
         order.setShopId(request.getShopId());
         order.setCustomerId(request.getCustomerId());
-        order.setOrderNumber(generateOrderNumber(businessId));
-        order.setTrackingNumber(generateTrackingNumber());
+        order.setOrderNumber(IdGenerator.generateOrderId());
+        order.setTrackingNumber(IdGenerator.generateTrackingId());
         order.setStatus(Order.OrderStatus.RECEIVED);
         order.setPriority(request.getPriority() != null ? 
             Order.Priority.valueOf(request.getPriority()) : Order.Priority.NORMAL);
@@ -127,8 +128,11 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         
         for (CreateOrderRequest.ItemDTO itemDto : request.getItems()) {
             OrderItem item = new OrderItem();
+            String itemTrackingNumber = IdGenerator.generateQrCode("item");
+            
             item.setOrder(order);
-            item.setItemNumber(generateItemNumber(order.getOrderNumber(), ++itemCount));
+            item.setItemNumber(itemTrackingNumber.split("-")[1]);
+            item.setBarcode(itemTrackingNumber);
             item.setServiceType(itemDto.getServiceTypeId().toString());
             item.setGarmentType(itemDto.getGarmentTypeId() != null ? itemDto.getGarmentTypeId().toString() : null);
             item.setDescription(itemDto.getDescription());
@@ -311,40 +315,79 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         orderRepository.save(order);
     }
     
+
+    /**
+     * Updates the order status and cascades the status change to all items
+     * that haven't progressed past the new status.
+     * 
+     * Records full audit trail:
+     * - OrderTimeline entry (who changed order status, when)
+     * - ItemStatusHistory entries for each affected item
+     * 
+     * Validates that the status transition is allowed before proceeding.
+     */
     @Transactional
     public OrderStatusDTO updateOrderStatus(UUID orderId, UpdateStatusRequest request) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
-        
+                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    
         Order.OrderStatus previousStatus = order.getStatus();
         Order.OrderStatus newStatus = Order.OrderStatus.valueOf(request.getStatus());
-        
+    
         // Validate status transition
         validateStatusTransition(previousStatus, newStatus);
-        
+    
+        // Update order status
         order.setStatus(newStatus);
-        
+    
         if (newStatus == Order.OrderStatus.READY_FOR_PICKUP) {
             order.setActualReadyAt(LocalDateTime.now());
         } else if (newStatus == Order.OrderStatus.COMPLETED) {
             order.setCompletedAt(LocalDateTime.now());
         }
-        
+    
         String userName = SecurityContextUtil.requireUsername();
-        
+        UUID currentUserId = getCurrentUserId();
+    
+        // CASCADE: Update all eligible items to match the new order status.
+        // This ensures items progress with the order when a manager updates it.
+        // Items that have already progressed further are NOT rolled back.
+
+        OrderItem.ItemStatus mappedItemStatus = mapOrderStatusToItemStatus(newStatus);
+        if (mappedItemStatus != null) {
+            for (OrderItem item : order.getItems()) {
+                if (shouldUpdateItemStatus(item.getStatus(), mappedItemStatus)) {
+                    OrderItem.ItemStatus previousItemStatus = item.getStatus();
+                    item.setStatus(mappedItemStatus);
+    
+                    // Record item-level audit history
+                    ItemStatusHistory itemHistory = new ItemStatusHistory();
+                    itemHistory.setOrderItem(item);
+                    itemHistory.setStatus(mappedItemStatus.toString());
+                    itemHistory.setTimestamp(LocalDateTime.now());
+                    itemHistory.setUpdatedBy(currentUserId);
+                    itemHistory.setNotes(String.format(
+                        "Status cascaded from order (%s → %s) by %s",
+                        previousItemStatus, mappedItemStatus, userName));
+                    item.getStatusHistory().add(itemHistory);
+                }
+            }
+        }
+    
+        // Record order-level timeline
         OrderTimeline timeline = new OrderTimeline();
         timeline.setOrder(order);
         timeline.setType("STATUS_CHANGE");
         timeline.setStatus(newStatus.toString());
         timeline.setDescription(request.getNotes());
         timeline.setTimestamp(LocalDateTime.now());
-        timeline.setUserId(getCurrentUserId());
-        timeline.setUserName(userName);
+        timeline.setUserId(currentUserId);
+        timeline.setUserName(getUserName(currentUserId));
         order.getTimeline().add(timeline);
-        
+    
         order = orderRepository.save(order);
-
-        // Broadcast real-time order update to all subscribers of this business
+    
+        // Broadcast real-time update
         webSocketPublisher.publishOrderUpdate(
             order.getBusinessId(), order.getId(),
             OrderStatusDTO.builder()
@@ -353,18 +396,18 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
                 .currentStatus(newStatus.toString())
                 .updatedAt(LocalDateTime.now())
                 .build());
-
-        return OrderStatusDTO.builder()
-            .orderId(order.getId())
-            .previousStatus(previousStatus.toString())
-            .currentStatus(newStatus.toString())
-            .updatedAt(LocalDateTime.now())
-            .updatedBy(userName)
-            .notes(request.getNotes())
-            .estimatedCompletion(order.getExpectedReadyAt())
-            .build();
-    }
     
+        return OrderStatusDTO.builder()
+                .orderId(order.getId())
+                .previousStatus(previousStatus.toString())
+                .currentStatus(newStatus.toString())
+                .updatedAt(LocalDateTime.now())
+                .updatedBy(userName)
+                .notes(request.getNotes())
+                .estimatedCompletion(order.getExpectedReadyAt())
+                .build();
+    }
+        
     @Transactional
     public OrderItemStatusDTO updateItemStatus(UUID orderId, UUID itemId, UpdateItemStatusRequest request) {
         Order order = orderRepository.findById(orderId)
@@ -575,16 +618,59 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         }
     }
     
-    private String generateOrderNumber(UUID businessId) {
-        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String sequence = String.format("%04d", new Random().nextInt(10000));
-        return String.format("ORD-%s-%s-%s", businessId.toString().substring(0, 4), datePart, sequence);
-    }
+
     
     private String generateTrackingNumber() {
         String timestamp = String.valueOf(System.currentTimeMillis());
         String random = String.format("%06d", new Random().nextInt(1000000));
         return "TRK" + timestamp.substring(timestamp.length() - 8) + random;
+    }
+    
+    /**
+     * Maps order-level status to corresponding item-level status.
+     * Only maps to item statuses that make sense for items to inherit.
+     * Delivery-related statuses (OUT_FOR_DELIVERY) don't map to items.
+     */
+    private OrderItem.ItemStatus mapOrderStatusToItemStatus(Order.OrderStatus orderStatus) {
+        return switch (orderStatus) {
+            case RECEIVED -> OrderItem.ItemStatus.RECEIVED;
+            case WASHING -> OrderItem.ItemStatus.WASHING;
+            case WASHED -> OrderItem.ItemStatus.WASHED;
+            case IRONING -> OrderItem.ItemStatus.IRONING;
+            case IRONED -> OrderItem.ItemStatus.IRONED;
+            case QUALITY_CHECK -> OrderItem.ItemStatus.QUALITY_CHECK;
+            case READY_FOR_PICKUP -> OrderItem.ItemStatus.COMPLETED;
+            // These order statuses don't have item-level equivalents
+            case OUT_FOR_DELIVERY, COMPLETED, ARCHIVED, DRAFT -> null;
+        };
+    }
+    
+    /**
+     * Determines if an item should be updated to the target status.
+     * Uses ordinal comparison: items only move forward, never backward.
+     * Items already at or past the target status are left alone.
+     */
+    private boolean shouldUpdateItemStatus(OrderItem.ItemStatus current, OrderItem.ItemStatus target) {
+        return getItemStatusOrdinal(current) < getItemStatusOrdinal(target);
+    }
+    
+    /**
+     * Returns the workflow position of an item status.
+     * Higher numbers = further along in the laundry process.
+     * PENDING(0) → RECEIVED(1) → WASHING(2) → ... → COMPLETED(7)
+     */
+    private int getItemStatusOrdinal(OrderItem.ItemStatus status) {
+        return switch (status) {
+            case PENDING -> 0;
+            case RECEIVED -> 1;
+            case WASHING -> 2;
+            case WASHED -> 3;
+            case IRONING -> 4;
+            case IRONED -> 5;
+            case QUALITY_CHECK -> 6;
+            case COMPLETED -> 7;
+            case ISSUE_REPORTED -> 99; // Issues are tracked separately, don't participate in flow
+        };
     }
     
     private String generateItemNumber(String orderNumber, int sequence) {

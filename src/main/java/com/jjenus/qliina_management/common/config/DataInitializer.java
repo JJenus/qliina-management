@@ -1,4 +1,3 @@
-// ./src/main/java/com/jjenus/qliina_management/common/config/DataInitializer.java
 package com.jjenus.qliina_management.common.config;
 
 import com.jjenus.qliina_management.business.model.Business;
@@ -98,7 +97,7 @@ public class DataInitializer implements CommandLineRunner {
         perm("notification.update", "Update Notifications",  "Mark notifications as read",      "NOTIFICATION", "BUSINESS", true);
         perm("notification.manage", "Manage Notifications",  "Manage templates and settings",   "NOTIFICATION", "BUSINESS", false);
 
-        // Employee management — ADDED
+        // Employee management
         perm("employee.view",   "View Employees",   "View employee details",           "EMPLOYEE", "BUSINESS", true);
         perm("employee.clock",  "Clock In/Out",     "Clock in and out of shifts",     "EMPLOYEE", "SHOP",     true);
         perm("employee.manage", "Manage Employees", "Manage schedules and attendance","EMPLOYEE", "BUSINESS", false);
@@ -126,36 +125,95 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Creating default roles...");
         LocalDateTime now = LocalDateTime.now();
 
-        role("SUPER_ADMIN",    "Platform super administrator — full access",           Role.RoleType.PLATFORM, true, now,
+        // SUPER_ADMIN - Full platform access
+        role("SUPER_ADMIN", "Platform super administrator — full access", Role.RoleType.PLATFORM, true, now,
              new HashSet<>(permissionRepository.findAll()));
-        role("BUSINESS_OWNER", "Business owner — full business control",               Role.RoleType.BUSINESS, true, now,
+
+        // BUSINESS_OWNER - Full business control (all BUSINESS and SHOP scope permissions)
+        role("BUSINESS_OWNER", "Business owner — full business control", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByScopeIn(Arrays.asList(
                      Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))));
-        role("SHOP_MANAGER",   "Shop manager — operational control of assigned shops", Role.RoleType.BUSINESS, true, now,
-             new HashSet<>(permissionRepository.findByScope(Permission.PermissionScope.SHOP)));
-        role("FRONT_DESK",     "Front desk associate — order intake and payments",     Role.RoleType.BUSINESS, true, now,
+
+        // SHOP_MANAGER - Operational control with necessary business permissions
+        role("SHOP_MANAGER", "Shop manager — operational control of assigned shops", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "order.view","order.create","order.update","payment.process",
+                     // Order management (full control)
+                     "order.view", "order.create", "order.update", "order.delete",
+                     "order.status.update", "order.transfer",
+                     // Payment management (full control)
+                     "payment.process", "payment.refund", "payment.view",
+                     // Inventory management (full control)
+                     "inventory.view", "inventory.manage", "inventory.adjust",
+                     // Quality control (shop-level checks)
+                     "quality.check",
+                     // Quality management (business-level quality oversight)
+                     "quality.view", "quality.manage",
+                     // Customer management (full control)
+                     "customer.view", "customer.create", "customer.update",
+                     // Reporting (all reports)
+                     "report.view.operational", "report.view.financial", "report.export",
+                     // Notifications (view and update)
+                     "notification.view", "notification.update",
+                     // Employee management (full control)
+                     "employee.view", "employee.clock", "employee.manage",
+                     // User management (can view users)
+                     "user.view"
+             ))));
+
+        // FRONT_DESK - Order intake, payments, and customer service
+        role("FRONT_DESK", "Front desk associate — order intake and payments", Role.RoleType.BUSINESS, true, now,
+             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                     // Order management (create and view)
+                     "order.view", "order.create", "order.update", "order.status.update",
+                     // Payment processing
+                     "payment.process", "payment.view",
+                     // Customer management
+                     "customer.view", "customer.create", "customer.update",
+                     // Reporting (operational dashboard)
                      "report.view.operational",
-                     "customer.view","customer.create","customer.update",
-                     "notification.view","notification.update",
-                     "report.view.operational",
-                     "employee.clock","employee.view"))));
-        role("WASHER",         "Laundry technician — washing and drying",              Role.RoleType.BUSINESS, true, now,
+                     // Notifications
+                     "notification.view", "notification.update",
+                     // Employee (own clock-in and view)
+                     "employee.clock", "employee.view"
+             ))));
+
+        // WASHER - Laundry technicians
+        role("WASHER", "Laundry technician — washing and drying", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "order.view","order.status.update","quality.view","quality.check",
-                     "notification.view","notification.update",
-                     "employee.clock","employee.view"))));
-        role("IRONER",         "Ironing and finishing staff",                          Role.RoleType.BUSINESS, true, now,
+                     // Order management (view and status updates)
+                     "order.view", "order.status.update",
+                     // Quality control (check and view)
+                     "quality.check", "quality.view",
+                     // Notifications
+                     "notification.view", "notification.update",
+                     // Employee (own clock-in and view)
+                     "employee.clock", "employee.view"
+             ))));
+
+        // IRONER - Ironing and finishing staff
+        role("IRONER", "Ironing and finishing staff", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "order.view","order.status.update","quality.view","quality.check",
-                     "notification.view","notification.update",
-                     "employee.clock","employee.view"))));
-        role("DELIVERY",       "Delivery personnel",                                   Role.RoleType.BUSINESS, true, now,
+                     // Order management (view and status updates)
+                     "order.view", "order.status.update",
+                     // Quality control (check and view)
+                     "quality.check", "quality.view",
+                     // Notifications
+                     "notification.view", "notification.update",
+                     // Employee (own clock-in and view)
+                     "employee.clock", "employee.view"
+             ))));
+
+        // DELIVERY - Delivery personnel
+        role("DELIVERY", "Delivery personnel", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "order.view","order.status.update",
-                     "notification.view","notification.update",
-                     "employee.clock","employee.view"))));
+                     // Order management (view and status updates)
+                     "order.view", "order.status.update",
+                     // Notifications
+                     "notification.view", "notification.update",
+                     // Employee (own clock-in and view)
+                     "employee.clock", "employee.view"
+             ))));
+
         log.info("Created {} roles.", roleRepository.count());
     }
 
@@ -175,40 +233,94 @@ public class DataInitializer implements CommandLineRunner {
     private void syncRolePermissions() {
         log.info("Syncing role permissions...");
 
+        // SUPER_ADMIN - Full platform access
         syncRole("SUPER_ADMIN",
             new HashSet<>(permissionRepository.findAll()));
 
+        // BUSINESS_OWNER - Full business control (all BUSINESS and SHOP scope permissions)
         syncRole("BUSINESS_OWNER",
             new HashSet<>(permissionRepository.findByScopeIn(Arrays.asList(
                 Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))));
 
+        // SHOP_MANAGER - Operational control with necessary business permissions
         syncRole("SHOP_MANAGER",
-            new HashSet<>(permissionRepository.findByScope(Permission.PermissionScope.SHOP)));
+            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                // Order management (full control)
+                "order.view", "order.create", "order.update", "order.delete",
+                "order.status.update", "order.transfer",
+                // Payment management (full control)
+                "payment.process", "payment.refund", "payment.view",
+                // Inventory management (full control)
+                "inventory.view", "inventory.manage", "inventory.adjust",
+                // Quality control (shop-level checks)
+                "quality.check",
+                // Quality management (business-level quality oversight)
+                "quality.view", "quality.manage",
+                // Customer management (full control)
+                "customer.view", "customer.create", "customer.update",
+                // Reporting (all reports including dashboard)
+                "report.view.operational", "report.view.financial", "report.export",
+                // Notifications (view and update)
+                "notification.view", "notification.update",
+                // Employee management (full control)
+                "employee.view", "employee.clock", "employee.manage",
+                // User management (can view users)
+                "user.view"
+            ))));
 
+        // FRONT_DESK - Order intake, payments, and customer service
         syncRole("FRONT_DESK",
             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "order.view","order.create","order.update","payment.process",
-                "customer.view","customer.create","customer.update",
-                "notification.view","notification.update",
-                "employee.clock","employee.view"))));
+                // Order management (create and view)
+                "order.view", "order.create", "order.update", "order.status.update",
+                // Payment processing
+                "payment.process", "payment.view",
+                // Customer management
+                "customer.view", "customer.create", "customer.update",
+                // Reporting (operational dashboard)
+                "report.view.operational",
+                // Notifications
+                "notification.view", "notification.update",
+                // Employee (own clock-in and view)
+                "employee.clock", "employee.view"
+            ))));
 
+        // WASHER - Laundry technicians
         syncRole("WASHER",
             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "order.view","order.status.update","quality.view","quality.check",
-                "notification.view","notification.update",
-                "employee.clock","employee.view"))));
+                // Order management (view and status updates)
+                "order.view", "order.status.update",
+                // Quality control (check and view)
+                "quality.check", "quality.view",
+                // Notifications
+                "notification.view", "notification.update",
+                // Employee (own clock-in and view)
+                "employee.clock", "employee.view"
+            ))));
 
+        // IRONER - Ironing and finishing staff
         syncRole("IRONER",
             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "order.view","order.status.update","quality.view","quality.check",
-                "notification.view","notification.update",
-                "employee.clock","employee.view"))));
+                // Order management (view and status updates)
+                "order.view", "order.status.update",
+                // Quality control (check and view)
+                "quality.check", "quality.view",
+                // Notifications
+                "notification.view", "notification.update",
+                // Employee (own clock-in and view)
+                "employee.clock", "employee.view"
+            ))));
 
+        // DELIVERY - Delivery personnel
         syncRole("DELIVERY",
             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "order.view","order.status.update",
-                "notification.view","notification.update",
-                "employee.clock","employee.view"))));
+                // Order management (view and status updates)
+                "order.view", "order.status.update",
+                // Notifications
+                "notification.view", "notification.update",
+                // Employee (own clock-in and view)
+                "employee.clock", "employee.view"
+            ))));
     }
 
     private void syncRole(String roleName, Set<Permission> permissions) {
