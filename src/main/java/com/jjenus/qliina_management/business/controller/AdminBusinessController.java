@@ -8,6 +8,8 @@ import com.jjenus.qliina_management.business.service.PlanLimitService;
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.MaskingUtils;
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.repository.UserRepository;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
@@ -15,7 +17,6 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,13 +40,14 @@ public class AdminBusinessController {
 
     private final BusinessRepository businessRepository;
     private final PlanLimitService   planLimitService;
+    private final UserRepository     userRepository;
 
     // -----------------------------------------------------------------------
     // List all businesses
     // -----------------------------------------------------------------------
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','PLATFORM_ADMIN','SUPPORT_AGENT','BILLING_ADMIN','READONLY_AUDITOR')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.view')")
     public ResponseEntity<?> listBusinesses(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
             Authentication auth) {
@@ -70,7 +72,7 @@ public class AdminBusinessController {
     // -----------------------------------------------------------------------
 
     @GetMapping("/{businessId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','PLATFORM_ADMIN','SUPPORT_AGENT','BILLING_ADMIN','READONLY_AUDITOR')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.view')")
     public ResponseEntity<?> getBusiness(
             @PathVariable UUID businessId,
             Authentication auth) {
@@ -84,7 +86,7 @@ public class AdminBusinessController {
     // -----------------------------------------------------------------------
 
     @PatchMapping("/{businessId}/plan")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','PLATFORM_ADMIN','BILLING_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.billing.manage')")
     public ResponseEntity<BusinessDTO> changePlan(
             @PathVariable UUID businessId,
             @RequestBody Map<String, String> body) {
@@ -108,7 +110,7 @@ public class AdminBusinessController {
     // -----------------------------------------------------------------------
 
     @PatchMapping("/{businessId}/status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','PLATFORM_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
     public ResponseEntity<BusinessDTO> changeStatus(
             @PathVariable UUID businessId,
             @RequestBody Map<String, String> body) {
@@ -180,14 +182,20 @@ public class AdminBusinessController {
         );
     }
 
-    /** Returns the most privileged platform role the caller holds. */
+    /**
+     * Returns the most privileged platform role the caller holds.
+     * Looks up the user entity because Spring authorities only contain permissions,
+     * not role names, in this application's security model.
+     */
     private String dominantPlatformRole(Authentication auth) {
-        List<String> platformRoles = List.of("SUPER_ADMIN", "PLATFORM_ADMIN", "BILLING_ADMIN",
+        User user = userRepository.findByUsername(auth.getName()).orElse(null);
+        if (user == null) return "READONLY_AUDITOR";
+        // Priority order: most privileged first
+        List<String> ordered = List.of("SUPER_ADMIN", "PLATFORM_ADMIN", "BILLING_ADMIN",
                 "SUPPORT_AGENT", "READONLY_AUDITOR");
-        return auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .map(a -> a.startsWith("ROLE_") ? a.substring(5) : a)
-                .filter(platformRoles::contains)
+        return user.getRoles().stream()
+                .map(ur -> ur.getRole().getName())
+                .filter(ordered::contains)
                 .findFirst()
                 .orElse("READONLY_AUDITOR");
     }

@@ -45,7 +45,7 @@ public class BusinessController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.view')")
     public ResponseEntity<PageResponse<BusinessDTO>> listBusinesses(
             @Parameter(description = "Filter by status")
             @RequestParam(required = false) Business.Status status,
@@ -65,7 +65,7 @@ public class BusinessController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{businessId}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.view') or hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
     public ResponseEntity<BusinessDTO> getBusiness(
             @Parameter(description = "Business ID", required = true) @PathVariable UUID businessId) {
         return ResponseEntity.ok(businessService.getBusiness(businessId));
@@ -99,7 +99,7 @@ public class BusinessController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PatchMapping("/{businessId}/status")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
     public ResponseEntity<BusinessDTO> changeStatus(
             @Parameter(description = "Business ID", required = true) @PathVariable UUID businessId,
             @Parameter(description = "New status", required = true) @RequestParam Business.Status status) {

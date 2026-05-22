@@ -3,6 +3,7 @@
 package com.jjenus.qliina_management.identity.security;
 
 import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.model.UserRole;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,11 +91,11 @@ public class CustomPermissionEvaluator implements PermissionEvaluator {
             UUID roleBusinessId = userRole.getBusinessId();
             UUID roleShopId = userRole.getShopId();
             
-            // If no specific business is being checked (e.g., dashboard listing all businesses)
+            // If no specific business is being checked (e.g., platform-level permission)
             if (businessId == null) {
-                // Business-level role OR any role with matching business OR role with null businessId
-                if (roleShopId == null) {
-                    log.debug("Granted: business-level role, shopId null");
+                // roleShopId is never Java-null — @PrePersist normalises it to GLOBAL_SCOPE UUID(0,0)
+                if (roleShopId == null || UserRole.GLOBAL_SCOPE.equals(roleShopId)) {
+                    log.debug("Granted: platform-level role, global scope");
                     return true;
                 }
                 continue;

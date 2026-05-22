@@ -39,7 +39,13 @@ public class NotificationDeviceService {
         device.setBusinessId(businessId);
         device.setUserId(userId);
         device.setDeviceId(request.getDeviceId());
-        device.setDeviceType(UserDevice.DeviceType.valueOf(request.getDeviceType()));
+        UserDevice.DeviceType deviceType;
+        try {
+            deviceType = UserDevice.DeviceType.valueOf(request.getDeviceType().toUpperCase());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            deviceType = UserDevice.DeviceType.WEB; // fallback for unknown types
+        }
+        device.setDeviceType(deviceType);
         device.setPushToken(request.getPushToken());
         device.setAppVersion(request.getAppVersion());
         device.setOsVersion(request.getOsVersion());

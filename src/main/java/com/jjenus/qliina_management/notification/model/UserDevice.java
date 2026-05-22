@@ -47,6 +47,6 @@ public class UserDevice extends BaseTenantEntity {
     private String model;
     
     public enum DeviceType {
-        ANDROID, IOS, WEB, TABLET
+        ANDROID, IOS, WEB, TABLET, DESKTOP
     }
 }

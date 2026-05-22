@@ -54,7 +54,7 @@ public class SubscriptionController {
     // -------------------------------------------------------------------------
 
     @PostMapping("/api/v1/admin/subscription/plans")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('PLATFORM_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.plans.manage')")
     public ResponseEntity<SubscriptionPlanDTO> createPlan(@RequestBody SubscriptionPlanDTO dto) {
         if (planRepository.existsByTier(dto.getTier())) {
             throw new BusinessException("A plan with tier '" + dto.getTier() + "' already exists", "PLAN_EXISTS", "tier");
@@ -64,7 +64,7 @@ public class SubscriptionController {
     }
 
     @PutMapping("/api/v1/admin/subscription/plans/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('PLATFORM_ADMIN')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.plans.manage')")
     public ResponseEntity<SubscriptionPlanDTO> updatePlan(
             @PathVariable UUID id,
             @RequestBody SubscriptionPlanDTO dto) {

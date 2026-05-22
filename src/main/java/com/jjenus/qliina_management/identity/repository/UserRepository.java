@@ -59,4 +59,12 @@ Optional<User> findByIdentity(@Param("identity") String identity);
 
     @Query("SELECT COUNT(u) FROM User u WHERE u.businessId = :businessId AND u.enabled = true")
     long countByBusinessIdAndEnabledTrue(@Param("businessId") UUID businessId);
+
+    /** Find users who hold any of the given role names (platform staff lookup). */
+    @Query("SELECT DISTINCT u FROM User u JOIN u.roles ur JOIN ur.role r WHERE r.name IN :roleNames ORDER BY u.createdAt DESC")
+    Page<User> findByAnyRoleName(@Param("roleNames") List<String> roleNames, Pageable pageable);
+
+    /** Find users who hold a specific role name. */
+    @Query("SELECT DISTINCT u FROM User u JOIN u.roles ur JOIN ur.role r WHERE r.name = :roleName ORDER BY u.createdAt DESC")
+    Page<User> findByRoleName(@Param("roleName") String roleName, Pageable pageable);
 }
