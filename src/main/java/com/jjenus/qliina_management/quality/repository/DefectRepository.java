@@ -36,4 +36,7 @@ public interface DefectRepository extends JpaRepository<Defect, UUID>, JpaSpecif
             @Param("businessId") UUID businessId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT COUNT(d) FROM Defect d WHERE d.qualityCheck.businessId = :businessId AND d.status != 'RESOLVED'")
+    Long countOpenDefectsByBusinessId(@Param("businessId") UUID businessId);
 }

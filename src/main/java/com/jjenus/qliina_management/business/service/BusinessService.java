@@ -11,6 +11,9 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import com.jjenus.qliina_management.identity.security.JwtProvider;
+import com.jjenus.qliina_management.notification.dto.NotificationPreferenceDTO;
+import com.jjenus.qliina_management.notification.model.Notification;
+import com.jjenus.qliina_management.notification.service.NotificationPreferenceService;
 import com.jjenus.qliina_management.payment.service.PaymentMethodService;
 
 import lombok.RequiredArgsConstructor;
@@ -51,8 +54,9 @@ public class BusinessService {
     private final PasswordEncoder        passwordEncoder;
     private final JwtProvider            jwtProvider;
     private final UserDetailsService     userDetailsService;
-    private final PaymentMethodService     paymentMethodInitializer;
-    private final ServiceCatalogService     serviceCatalogService;
+    private final PaymentMethodService          paymentMethodInitializer;
+    private final ServiceCatalogService         serviceCatalogService;
+    private final NotificationPreferenceService notificationPreferenceService;
 
     // -------------------------------------------------------------------------
     // Open registration
@@ -163,6 +167,9 @@ public class BusinessService {
         String accessToken  = jwtProvider.generateToken(claims, ud);
         String refreshToken = jwtProvider.generateRefreshToken(ud);
         storeRefreshToken(user, refreshToken);
+
+        // 11. Seed default notification preferences for the owner
+        seedDefaultNotificationPreferences(user.getId(), businessId);
 
         log.info("Business registered: slug={}, businessId={}, owner=@{}", slug, businessId, user.getUsername());
 
@@ -296,5 +303,35 @@ public class BusinessService {
             MessageDigest d = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(d.digest(token.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
+    }
+
+    /**
+     * Seeds sensible default notification preferences for a newly created user.
+     * IN_APP and PUSH are on for all event types.
+     * EMAIL is on for ORDER_STATUS, PAYMENT, and ALERT.
+     * SMS is on for ALERT only.
+     * WHATSAPP is off by default.
+     */
+    private void seedDefaultNotificationPreferences(UUID userId, UUID businessId) {
+        Set<String> emailOn  = Set.of("ORDER_STATUS", "PAYMENT", "ALERT");
+        Set<String> smsOn    = Set.of("ALERT");
+
+        for (Notification.NotificationType type : Notification.NotificationType.values()) {
+            for (Notification.NotificationChannel channel : Notification.NotificationChannel.values()) {
+                boolean enabled = switch (channel) {
+                    case IN_APP    -> true;
+                    case PUSH      -> true;
+                    case EMAIL     -> emailOn.contains(type.name());
+                    case SMS       -> smsOn.contains(type.name());
+                    case WHATSAPP  -> false;
+                };
+                notificationPreferenceService.upsertPreference(userId, businessId,
+                    NotificationPreferenceDTO.builder()
+                        .channel(channel.name())
+                        .notificationType(type.name())
+                        .enabled(enabled)
+                        .build());
+            }
+        }
     }
 }

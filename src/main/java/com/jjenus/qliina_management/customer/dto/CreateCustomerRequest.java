@@ -48,5 +48,6 @@ public class CreateCustomerRequest {
         private Boolean notifyViaEmail;
         private String preferredPaymentMethod;
         private UUID preferredShopId;
+        private List<String> fabricCare;
     }
 }

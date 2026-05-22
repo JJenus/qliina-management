@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.employee.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,11 +23,15 @@ public class ShiftDTO {
     private LocalDate date;
     private LocalDateTime scheduledStart;
     private LocalDateTime scheduledEnd;
+    @JsonProperty("clockIn")
     private LocalDateTime actualStart;
+    @JsonProperty("clockOut")
     private LocalDateTime actualEnd;
     private LocalDateTime breakStart;
     private LocalDateTime breakEnd;
+    @JsonProperty("breakMinutes")
     private Integer totalBreakMinutes;
+    @JsonProperty("workedMinutes")
     private Integer totalWorkMinutes;
     private Integer overtimeMinutes;
     private String status;

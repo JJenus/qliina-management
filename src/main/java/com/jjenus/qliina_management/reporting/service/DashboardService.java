@@ -6,6 +6,7 @@ import com.jjenus.qliina_management.inventory.repository.ShopStockRepository;
 import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
 import com.jjenus.qliina_management.payment.repository.InvoiceRepository;
+import com.jjenus.qliina_management.quality.repository.DefectRepository;
 import com.jjenus.qliina_management.reporting.dto.DashboardSummaryDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class DashboardService {
     private final ShopRepository shopRepository;
     private final ShopStockRepository shopStockRepository;
     private final InvoiceRepository invoiceRepository;
+    private final DefectRepository defectRepository;
     
     public DashboardSummaryDTO getDashboardSummary(UUID businessId, UUID shopId) {
         LocalDate today = LocalDate.now();
@@ -151,6 +153,10 @@ public class DashboardService {
                 .build());
         }
         
+        // Items in QC (open/unresolved defects)
+        Long itemsInQCCount = defectRepository.countOpenDefectsByBusinessId(businessId);
+        if (itemsInQCCount == null) itemsInQCCount = 0L;
+
         DashboardSummaryDTO.KPIDTO kpi = DashboardSummaryDTO.KPIDTO.builder()
             .todayRevenue(todayRevenue)
             .revenueChange(revenueChange)
@@ -160,6 +166,7 @@ public class DashboardService {
             .activeEmployees(activeEmployees.intValue())
             .averageOrderValue(aov.doubleValue())
             .outstandingReceivables(outstanding)
+            .itemsInQC(itemsInQCCount.intValue())
             .build();
         
         return DashboardSummaryDTO.builder()

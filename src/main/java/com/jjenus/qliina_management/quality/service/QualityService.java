@@ -2,6 +2,7 @@ package com.jjenus.qliina_management.quality.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.quality.dto.*;
 import com.jjenus.qliina_management.quality.model.*;
@@ -32,6 +33,7 @@ public class QualityService {
     private final QualityCheckRepository qualityCheckRepository;
     private final DefectRepository defectRepository;
     private final UserRepository userRepository;
+    private final WebSocketPublisher webSocketPublisher;
     
     private UUID getCurrentUserId() {
         try {
@@ -164,8 +166,8 @@ public class QualityService {
         check.setNotes(request.getNotes());
         
         check = qualityCheckRepository.save(check);
-        
-        return QualityCheckResultDTO.builder()
+
+        QualityCheckResultDTO result = QualityCheckResultDTO.builder()
             .itemId(itemId)
             .checklistId(check.getChecklistId())
             .status(check.getStatus())
@@ -183,6 +185,10 @@ public class QualityService {
             .checkedAt(check.getCheckedAt())
             .nextAction(determineNextAction(check.getStatus()))
             .build();
+
+        webSocketPublisher.publishQualityUpdate(businessId, check.getId(), result);
+
+        return result;
     }
     
     @Transactional
@@ -206,10 +212,13 @@ public class QualityService {
         defect.setStatus("OPEN");
         
         defect = defectRepository.save(defect);
-        
-        return mapToDefectDTO(defect);
+
+        DefectDTO defectDTO = mapToDefectDTO(defect);
+        webSocketPublisher.publishQualityUpdate(businessId, check.getId(), defectDTO);
+
+        return defectDTO;
     }
-    
+
     @Transactional
     public DefectDTO updateDefect(UUID defectId, UpdateDefectRequest request) {
         Defect defect = defectRepository.findById(defectId)

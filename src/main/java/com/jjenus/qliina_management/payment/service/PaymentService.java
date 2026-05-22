@@ -392,7 +392,6 @@ public class PaymentService {
         account.setBillingCycle(request.getBillingCycle());
         account.setStatus("ACTIVE");
         
-        //todo: marker to confirm BillingAddress request and account + CorporateAccount
         if (request.getBillingAddress() != null) {
             CorporateAccount.BillingAddress billingAddress = new CorporateAccount.BillingAddress();
             billingAddress.setAddressLine1(request.getBillingAddress().getAddressLine1());
@@ -545,63 +544,6 @@ public class PaymentService {
     public BigDecimal sumRevenueByDateRange(UUID businessId, UUID shopId, LocalDateTime startDate, LocalDateTime endDate) {
     return paymentRepository.sumRevenueByDateRange(businessId, shopId, startDate, endDate);
 }
-    //this send methods will be removed
-    private void sendViaTwilio(SMSConfiguration config, String to, String message) {
-        // Twilio implementation
-        try {
-            String accountSid = encryptionService.decrypt(config.getAccountSidEncrypted());
-            String authToken = encryptionService.decrypt(config.getAuthTokenEncrypted());
-            
-            // In a real implementation, you'd use Twilio SDK
-            log.info("Sending Twilio SMS from {} to: {} - Message: {}", config.getFromNumber(), to, message);
-            
-            // Simulate API call
-            // Twilio.init(accountSid, authToken);
-            // Message.creator(new PhoneNumber(to), new PhoneNumber(config.getFromNumber()), message).create();
-            
-        } catch (Exception e) {
-            log.error("Failed to send Twilio SMS", e);
-            throw new BusinessException("Failed to send SMS via Twilio: " + e.getMessage(), "SMS_SEND_FAILED");
-        }
-    }
-    
-    private void sendViaAWSSNS(SMSConfiguration config, String to, String message) {
-        // AWS SNS implementation
-        try {
-            // In a real implementation, you'd use AWS SDK
-            log.info("Sending AWS SNS SMS to: {} - Message: {}", to, message);
-            
-            // AmazonSNS snsClient = AmazonSNSClient.builder().build();
-            // PublishRequest request = new PublishRequest()
-            //     .withMessage(message)
-            //     .withPhoneNumber(to);
-            // snsClient.publish(request);
-            
-        } catch (Exception e) {
-            log.error("Failed to send AWS SNS SMS", e);
-            throw new BusinessException("Failed to send SMS via AWS SNS: " + e.getMessage(), "SMS_SEND_FAILED");
-        }
-    }
-    
-    private void sendViaVonage(SMSConfiguration config, String to, String message) {
-        // Vonage (formerly Nexmo) implementation
-        try {
-            // In a real implementation, you'd use Vonage SDK
-            log.info("Sending Vonage SMS to: {} - Message: {}", to, message);
-            
-            // VonageClient client = VonageClient.builder()
-            //     .apiKey(apiKey)
-            //     .apiSecret(apiSecret)
-            //     .build();
-            // TextMessage message = new TextMessage(config.getFromNumber(), to, message);
-            // client.getSmsClient().sendMessage(message);
-            
-        } catch (Exception e) {
-            log.error("Failed to send Vonage SMS", e);
-            throw new BusinessException("Failed to send SMS via Vonage: " + e.getMessage(), "SMS_SEND_FAILED");
-        }
-    }
-    
     private PaymentDTO mapToPaymentDTO(OrderPayment payment) {
         String orderNumber = "";
         try {

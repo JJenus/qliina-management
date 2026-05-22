@@ -10,6 +10,9 @@ import com.jjenus.qliina_management.order.model.Order;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -17,7 +20,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -596,18 +602,115 @@ public class CustomerService {
     
     @Transactional
     public ImportResultDTO importCustomers(UUID businessId, CustomerImportRequest request) {
-        ImportResultDTO result = ImportResultDTO.builder()
-            .totalRows(0)
-            .imported(0)
-            .updated(0)
-            .failed(0)
-            .errors(new ArrayList<>())
-            .build();
-        
-        // Implementation would parse CSV/Excel and process rows
-        // This is a placeholder for the actual import logic
-        
-        return result;
+        List<ImportResultDTO.ErrorDTO> errors = new ArrayList<>();
+        int totalRows = 0, imported = 0, updated = 0, failed = 0;
+
+        if (request.getFile() == null || request.getFile().isEmpty()) {
+            throw new BusinessException("No file provided", "IMPORT_NO_FILE");
+        }
+
+        // Column name → CSV header resolution (use provided mapping or fall back to defaults)
+        Map<String, String> mapping = request.getMapping() != null ? request.getMapping() : Map.of();
+
+        try (Reader reader = new InputStreamReader(request.getFile().getInputStream(), StandardCharsets.UTF_8);
+             CSVParser parser = CSVFormat.DEFAULT
+                     .builder()
+                     .setHeader()
+                     .setSkipHeaderRecord(true)
+                     .setIgnoreHeaderCase(true)
+                     .setTrim(true)
+                     .build()
+                     .parse(reader)) {
+
+            for (CSVRecord record : parser) {
+                totalRows++;
+                int row = (int) record.getRecordNumber() + 1; // 1-based for error messages
+
+                try {
+                    String phone     = col(record, mapping, "phone");
+                    String firstName = col(record, mapping, "firstName", "first_name", "firstname");
+                    String lastName  = col(record, mapping, "lastName",  "last_name",  "lastname");
+                    String email     = col(record, mapping, "email");
+
+                    if (phone == null || phone.isBlank()) {
+                        errors.add(ImportResultDTO.ErrorDTO.builder()
+                                .row(row).message("Phone number is required").build());
+                        failed++;
+                        continue;
+                    }
+                    if (firstName == null || firstName.isBlank()) {
+                        errors.add(ImportResultDTO.ErrorDTO.builder()
+                                .row(row).message("First name is required").build());
+                        failed++;
+                        continue;
+                    }
+
+                    Optional<Customer> existing = customerRepository.findByBusinessIdAndPhone(businessId, phone);
+
+                    if (existing.isPresent()) {
+                        if (Boolean.TRUE.equals(request.getUpdateExisting())) {
+                            Customer c = existing.get();
+                            c.setFirstName(firstName);
+                            if (lastName != null)  c.setLastName(lastName);
+                            if (email != null)     c.setEmail(email);
+                            customerRepository.save(c);
+                            updated++;
+                        }
+                        // else: skip silently (phone already exists, updateExisting=false)
+                    } else {
+                        CreateCustomerRequest req = new CreateCustomerRequest();
+                        req.setFirstName(firstName);
+                        req.setLastName(lastName != null ? lastName : "");
+                        req.setPhone(phone);
+                        req.setEmail(email);
+                        createCustomer(businessId, req);
+                        imported++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Import row {} failed: {}", row, e.getMessage());
+                    errors.add(ImportResultDTO.ErrorDTO.builder()
+                            .row(row).message(e.getMessage()).build());
+                    failed++;
+                }
+            }
+        } catch (Exception e) {
+            log.error("Customer import failed to parse file", e);
+            throw new BusinessException("Failed to parse import file: " + e.getMessage(), "IMPORT_PARSE_ERROR");
+        }
+
+        return ImportResultDTO.builder()
+                .totalRows(totalRows)
+                .imported(imported)
+                .updated(updated)
+                .failed(failed)
+                .errors(errors)
+                .build();
+    }
+
+    /**
+     * Resolves a field value from a CSV record by trying the mapped column name first,
+     * then each of the provided fallback header names (case-insensitive).
+     */
+    private String col(CSVRecord record, Map<String, String> mapping, String field, String... aliases) {
+        // Check explicit mapping first
+        String mappedHeader = mapping.get(field);
+        if (mappedHeader != null && record.isMapped(mappedHeader)) {
+            String v = record.get(mappedHeader);
+            return v != null && !v.isBlank() ? v.trim() : null;
+        }
+        // Try field name itself
+        if (record.isMapped(field)) {
+            String v = record.get(field);
+            if (v != null && !v.isBlank()) return v.trim();
+        }
+        // Try aliases
+        for (String alias : aliases) {
+            if (record.isMapped(alias)) {
+                String v = record.get(alias);
+                if (v != null && !v.isBlank()) return v.trim();
+            }
+        }
+        return null;
     }
     
     @Transactional

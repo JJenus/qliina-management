@@ -7,6 +7,9 @@ import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.business.model.Shop;
+import com.jjenus.qliina_management.notification.dto.NotificationPreferenceDTO;
+import com.jjenus.qliina_management.notification.model.Notification;
+import com.jjenus.qliina_management.notification.service.NotificationPreferenceService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +40,7 @@ public class UserService {
     private final PermissionRepository permissionRepository;
     private final ShopRepository shopRepository;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationPreferenceService notificationPreferenceService;
     
     private UUID getCurrentUserId() {
         try {
@@ -172,12 +176,15 @@ public class UserService {
             }
             user.setShops(shops);
         }
-        
+
         user = userRepository.save(user);
-        
+
+        // Seed default notification preferences
+        seedDefaultNotificationPreferences(user.getId(), businessId);
+
         return mapToDetailDTO(user);
     }
-    
+
     @Transactional
     public UserDetailDTO updateUser(UUID userId, UpdateUserRequest request) {
         User user = userRepository.findById(userId)
@@ -542,7 +549,33 @@ public class UserService {
             .directPermissions(directPermissions)
             .metadata(metadata)
             .build();
-        
+
         return dto;
+    }
+
+    /**
+     * Seeds sensible default notification preferences for a newly created user.
+     */
+    private void seedDefaultNotificationPreferences(UUID userId, UUID businessId) {
+        Set<String> emailOn = Set.of("ORDER_STATUS", "PAYMENT", "ALERT");
+        Set<String> smsOn   = Set.of("ALERT");
+
+        for (Notification.NotificationType type : Notification.NotificationType.values()) {
+            for (Notification.NotificationChannel channel : Notification.NotificationChannel.values()) {
+                boolean enabled = switch (channel) {
+                    case IN_APP   -> true;
+                    case PUSH     -> true;
+                    case EMAIL    -> emailOn.contains(type.name());
+                    case SMS      -> smsOn.contains(type.name());
+                    case WHATSAPP -> false;
+                };
+                notificationPreferenceService.upsertPreference(userId, businessId,
+                    NotificationPreferenceDTO.builder()
+                        .channel(channel.name())
+                        .notificationType(type.name())
+                        .enabled(enabled)
+                        .build());
+            }
+        }
     }
 }

@@ -233,10 +233,12 @@ public class InventoryService {
                 shopStock = shopStockRepository.save(shopStock);
                 
                 // Check for low stock alerts
-                if (shopStock.getStatus() == ShopStock.StockStatus.LOW || 
+                if (shopStock.getStatus() == ShopStock.StockStatus.LOW ||
                     shopStock.getStatus() == ShopStock.StockStatus.CRITICAL) {
                     StockAlert alert = createStockAlert(businessId, request.getShopId(), item, shopStock);
-                    generatedAlerts.add(mapToAlertDTO(alert));
+                    StockAlertDTO alertDTO = mapToAlertDTO(alert);
+                    generatedAlerts.add(alertDTO);
+                    webSocketPublisher.publishInventoryAlert(businessId, item.getId(), alertDTO);
                 }
                 
                 results.add(StockAdjustmentResultDTO.AdjustmentResult.builder()

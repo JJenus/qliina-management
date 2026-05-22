@@ -35,6 +35,7 @@ public class DashboardSummaryDTO {
         private Integer activeEmployees;
         private Double averageOrderValue;
         private BigDecimal outstandingReceivables;
+        private Integer itemsInQC;
     }
     
     @Data
