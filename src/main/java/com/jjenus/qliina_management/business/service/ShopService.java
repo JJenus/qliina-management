@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
+
 /**
  * Service for managing Shop entities within a Business.
  *
@@ -30,6 +31,7 @@ public class ShopService {
 
     private final ShopRepository     shopRepository;
     private final BusinessRepository businessRepository;
+    private final PlanLimitService   planLimitService;
 
     @Transactional(readOnly = true)
     public PageResponse<ShopDTO> listShops(UUID businessId, Pageable pageable) {
@@ -45,6 +47,7 @@ public class ShopService {
     @Transactional
     public ShopDTO createShop(UUID businessId, CreateShopRequest req) {
         assertBusinessExists(businessId);
+        planLimitService.enforceShopLimit(businessId);
         String code = req.getCode().toUpperCase();
         if (shopRepository.existsByCode(code)) {
             throw new BusinessException("Shop code already in use", "SHOP_CODE_EXISTS", "code");

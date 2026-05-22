@@ -16,6 +16,8 @@ public class BusinessConfigDTO {
     private UUID       businessId;
     private BigDecimal taxRate;
     private String     currency;
+    private String     currencySymbol;
+    private String     currencyLocale;
     private String     timezone;
     private String     dateFormat;
     private String     receiptPrefix;

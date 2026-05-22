@@ -31,14 +31,22 @@ public class BusinessConfig extends BaseEntity {
     @Column(name = "tax_rate", precision = 5, scale = 2)
     private BigDecimal taxRate;
 
-    @Column(name = "currency")
-    private String currency = "USD";
+    @Column(name = "currency", length = 10)
+    private String currency = "NGN";
+
+    /** ISO 4217 currency symbol displayed in the UI (e.g. ₦, $, £). */
+    @Column(name = "currency_symbol", length = 10)
+    private String currencySymbol = "₦";
+
+    /** BCP-47 locale tag used by Intl.NumberFormat on the frontend (e.g. en-NG). */
+    @Column(name = "currency_locale", length = 20)
+    private String currencyLocale = "en-NG";
 
     @Column(name = "timezone")
-    private String timezone = "America/New_York";
+    private String timezone = "Africa/Lagos";
 
     @Column(name = "date_format")
-    private String dateFormat = "MM/dd/yyyy";
+    private String dateFormat = "dd/MM/yyyy";
 
     @Column(name = "receipt_prefix")
     private String receiptPrefix;

@@ -7,6 +7,7 @@ import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.business.model.Shop;
+import com.jjenus.qliina_management.business.service.PlanLimitService;
 import com.jjenus.qliina_management.notification.dto.NotificationPreferenceDTO;
 import com.jjenus.qliina_management.notification.model.Notification;
 import com.jjenus.qliina_management.notification.service.NotificationPreferenceService;
@@ -41,6 +42,7 @@ public class UserService {
     private final ShopRepository shopRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationPreferenceService notificationPreferenceService;
+    private final PlanLimitService planLimitService;
     
     private UUID getCurrentUserId() {
         try {
@@ -90,6 +92,7 @@ public class UserService {
     
     @Transactional
     public UserDetailDTO createUser(UUID businessId, CreateUserRequest request) {
+        planLimitService.enforceUserLimit(businessId);
         // Validate unique fields
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new BusinessException("Username already exists", "USERNAME_EXISTS", "username");

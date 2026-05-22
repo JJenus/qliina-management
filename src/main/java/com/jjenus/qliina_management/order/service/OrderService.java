@@ -27,10 +27,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.identity.model.User;
-import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
-import com.jjenus.qliina_management.common.util.SecurityContextUtil;
-import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
-import com.jjenus.qliina_management.common.util.SecurityContextUtil;
+import com.jjenus.qliina_management.business.service.PlanLimitService;
 import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.common.util.SecurityContextUtil;
 
@@ -54,7 +51,8 @@ public class OrderService {
     private final UserRepository userRepository;
     private final CustomerService customerService;
     private final PaymentService paymentService;
-    private final QualityCheckRepository qualityCheckRepository;  // ADDED
+    private final QualityCheckRepository qualityCheckRepository;
+    private final PlanLimitService planLimitService;
     
     private UUID getCurrentUserId() {
         return SecurityContextUtil.getCurrentUserId().orElse(null);
@@ -98,6 +96,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     
     @Transactional
     public OrderDetailDTO createOrder(UUID businessId, CreateOrderRequest request) {
+        planLimitService.enforceOrderLimit(businessId);
         Order order = new Order();
         order.setBusinessId(businessId);
         order.setShopId(request.getShopId());

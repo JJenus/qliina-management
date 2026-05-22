@@ -1,7 +1,9 @@
 package com.jjenus.qliina_management.common.config;
 
 import com.jjenus.qliina_management.business.model.Business;
+import com.jjenus.qliina_management.business.model.SubscriptionPlan;
 import com.jjenus.qliina_management.business.repository.BusinessRepository;
+import com.jjenus.qliina_management.business.repository.SubscriptionPlanRepository;
 import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -19,12 +22,13 @@ import java.util.*;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private final RoleRepository        roleRepository;
-    private final PermissionRepository  permissionRepository;
-    private final UserRepository        userRepository;
-    private final AuthAccountRepository authAccountRepository;
-    private final BusinessRepository    businessRepository;
-    private final PasswordEncoder       passwordEncoder;
+    private final RoleRepository            roleRepository;
+    private final PermissionRepository      permissionRepository;
+    private final UserRepository            userRepository;
+    private final AuthAccountRepository     authAccountRepository;
+    private final BusinessRepository        businessRepository;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final PasswordEncoder           passwordEncoder;
 
     private static final UUID SYSTEM_USER_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -42,6 +46,7 @@ public class DataInitializer implements CommandLineRunner {
         syncRolePermissions();
         createPlatformBusiness();
         createSuperAdmin();
+        seedSubscriptionPlans();
         log.info("Database initialization complete.");
     }
 
@@ -105,6 +110,14 @@ public class DataInitializer implements CommandLineRunner {
         // Admin
         perm("admin.settings", "Manage Settings", "Manage business settings", "ADMIN", "BUSINESS", false);
         perm("admin.audit",    "View Audit Logs", "View system audit logs",   "ADMIN", "BUSINESS", false);
+
+        // Platform roles (cross-tenant access for Qliina staff)
+        perm("platform.businesses.view",   "View All Businesses",       "List and view all businesses",           "PLATFORM_ADMIN", "BUSINESS", false);
+        perm("platform.businesses.manage", "Manage All Businesses",     "Update status and plan of businesses",   "PLATFORM_ADMIN", "BUSINESS", false);
+        perm("platform.plans.manage",      "Manage Subscription Plans", "CRUD subscription plan definitions",     "PLATFORM_ADMIN", "BUSINESS", false);
+        perm("platform.support.view",      "Support View",              "View operational data (masked PII)",     "PLATFORM_ADMIN", "BUSINESS", false);
+        perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "BUSINESS", false);
+        perm("platform.audit.view",        "Platform Audit View",       "Full read-only audit access",            "PLATFORM_ADMIN", "BUSINESS", false);
 
         log.info("Permissions check complete. Total: {}", permissionRepository.count());
     }
@@ -214,7 +227,40 @@ public class DataInitializer implements CommandLineRunner {
                      "employee.clock", "employee.view"
              ))));
 
+        // ------- Platform staff roles (only created once, idempotent via roleRepository.count() guard) -------
+        // PLATFORM_ADMIN - all-business management, can change plans, cannot delete businesses
+        roleIfAbsent("PLATFORM_ADMIN", "Platform admin — manages all businesses and plans", Role.RoleType.PLATFORM, true, now,
+             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                     "platform.businesses.view", "platform.businesses.manage",
+                     "platform.plans.manage", "platform.billing.manage", "platform.audit.view"
+             ))));
+
+        // SUPPORT_AGENT - operational view with masked PII, read-only
+        roleIfAbsent("SUPPORT_AGENT", "Support agent — masked read-only operational data", Role.RoleType.PLATFORM, true, now,
+             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                     "platform.businesses.view", "platform.support.view"
+             ))));
+
+        // BILLING_ADMIN - plan and trial management only
+        roleIfAbsent("BILLING_ADMIN", "Billing admin — plan and trial management", Role.RoleType.PLATFORM, true, now,
+             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                     "platform.businesses.view", "platform.billing.manage"
+             ))));
+
+        // READONLY_AUDITOR - full read-only access for compliance
+        roleIfAbsent("READONLY_AUDITOR", "Read-only auditor — compliance read access", Role.RoleType.PLATFORM, true, now,
+             new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                     "platform.businesses.view", "platform.audit.view"
+             ))));
+
         log.info("Created {} roles.", roleRepository.count());
+    }
+
+    /** Creates a role only if one with that name does not already exist. */
+    private void roleIfAbsent(String name, String desc, Role.RoleType type, boolean system,
+                              LocalDateTime now, Set<Permission> perms) {
+        if (roleRepository.findByName(name).isPresent()) return;
+        role(name, desc, type, system, now, perms);
     }
 
     private void role(String name, String desc, Role.RoleType type, boolean system,
@@ -321,6 +367,28 @@ public class DataInitializer implements CommandLineRunner {
                 // Employee (own clock-in and view)
                 "employee.clock", "employee.view"
             ))));
+
+        // Platform roles
+        syncRole("PLATFORM_ADMIN",
+            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                "platform.businesses.view", "platform.businesses.manage",
+                "platform.plans.manage", "platform.billing.manage", "platform.audit.view"
+            ))));
+
+        syncRole("SUPPORT_AGENT",
+            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                "platform.businesses.view", "platform.support.view"
+            ))));
+
+        syncRole("BILLING_ADMIN",
+            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                "platform.businesses.view", "platform.billing.manage"
+            ))));
+
+        syncRole("READONLY_AUDITOR",
+            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
+                "platform.businesses.view", "platform.audit.view"
+            ))));
     }
 
     private void syncRole(String roleName, Set<Permission> permissions) {
@@ -364,17 +432,24 @@ public class DataInitializer implements CommandLineRunner {
         LocalDateTime now = LocalDateTime.now();
 
         User admin = new User();
-        admin.setUsername("admin"); admin.setEmail("admin@qliina.com");
-        admin.setPhone("+1234567890"); admin.setFirstName("Super"); admin.setLastName("Admin");
+        admin.setUsername("admin"); 
+        admin.setEmail("admin@qliina.com");
+        admin.setPhone("+1234567890"); 
+        admin.setFirstName("Super"); 
+        admin.setLastName("Admin");
         admin.setEnabled(true);
         admin.setBusinessId(platformBusinessId);
-        admin.setCreatedAt(now); admin.setCreatedBy(SYSTEM_USER_ID);
+        admin.setCreatedAt(now); 
+        admin.setCreatedBy(SYSTEM_USER_ID);
         userRepository.save(admin);
 
         AuthAccount auth = new AuthAccount();
-        auth.setUser(admin); auth.setPasswordHash(passwordEncoder.encode("Admin@123"));
-        auth.setPasswordLastChanged(now); auth.setFailedAttempts(0); auth.setTotpEnabled(false);
-        auth.setCreatedAt(now); auth.setCreatedBy(SYSTEM_USER_ID);
+        auth.setUser(admin); 
+        auth.setPasswordHash(passwordEncoder.encode("Admin@123"));
+        auth.setPasswordLastChanged(now); 
+        auth.setFailedAttempts(0); auth.setTotpEnabled(false);
+        auth.setCreatedAt(now); 
+        auth.setCreatedBy(SYSTEM_USER_ID);
         authAccountRepository.save(auth);
 
         Role superAdminRole = roleRepository.findByName("SUPER_ADMIN")
@@ -389,5 +464,60 @@ public class DataInitializer implements CommandLineRunner {
         userRepository.save(admin);
 
         log.info("Superadmin created: username=admin, businessId={}", platformBusinessId);
+    }
+
+    /**
+     * Seeds the three base subscription plans (FREE / STARTER / PRO) idempotently.
+     * ENTERPRISE is not seeded — it is created manually per customer by SUPER_ADMIN.
+     */
+    private void seedSubscriptionPlans() {
+        log.info("Seeding subscription plans...");
+        seedPlan(SubscriptionPlan.builder()
+                .tier("FREE")
+                .name("Free")
+                .description("Perfect for getting started — no credit card required.")
+                .price(BigDecimal.ZERO)
+                .maxShops(1).maxUsers(3).maxEmployees(10).maxOrdersPerMonth(500)
+                .maxServiceCatalogItems(20).maxInventoryItems(50).dataRetentionDays(365)
+                .advancedAnalytics(false).exportReports(false).loyaltyProgram(true)
+                .qualityControl(true).apiAccess(false).prioritySupport(false)
+                .customBranding(false).multiShopReporting(false).isActive(true)
+                .build());
+
+        seedPlan(SubscriptionPlan.builder()
+                .tier("STARTER")
+                .name("Starter")
+                .description("Grow across multiple locations with core business tools.")
+                .price(new BigDecimal("9900.00"))   // ₦9,900/month
+                .maxShops(3).maxUsers(15).maxEmployees(30).maxOrdersPerMonth(2000)
+                .maxServiceCatalogItems(100).maxInventoryItems(300).dataRetentionDays(730)
+                .advancedAnalytics(false).exportReports(false).loyaltyProgram(true)
+                .qualityControl(true).apiAccess(false).prioritySupport(false)
+                .customBranding(false).multiShopReporting(true).isActive(true)
+                .build());
+
+        seedPlan(SubscriptionPlan.builder()
+                .tier("PRO")
+                .name("Pro")
+                .description("Unlimited growth with advanced analytics, exports and API access.")
+                .price(new BigDecimal("24900.00"))  // ₦24,900/month
+                .maxShops(-1).maxUsers(-1).maxEmployees(-1).maxOrdersPerMonth(-1)
+                .maxServiceCatalogItems(-1).maxInventoryItems(-1).dataRetentionDays(1825)
+                .advancedAnalytics(true).exportReports(true).loyaltyProgram(true)
+                .qualityControl(true).apiAccess(true).prioritySupport(true)
+                .customBranding(true).multiShopReporting(true).isActive(true)
+                .build());
+
+        log.info("Subscription plans seeded. Total: {}", subscriptionPlanRepository.count());
+    }
+
+    /** Inserts a plan row only if no row with the same tier already exists. */
+    private void seedPlan(SubscriptionPlan plan) {
+        if (subscriptionPlanRepository.existsByTier(plan.getTier())) {
+            log.debug("Subscription plan '{}' already exists — skipping.", plan.getTier());
+            return;
+        }
+        subscriptionPlanRepository.save(plan);
+        log.info("Seeded subscription plan: {}", plan.getTier());
     }
 }

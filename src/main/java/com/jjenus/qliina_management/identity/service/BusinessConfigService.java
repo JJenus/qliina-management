@@ -84,7 +84,7 @@ public class BusinessConfigService {
 
     private BusinessConfigDTO mapToDTO(BusinessConfig c) {
         BusinessConfigDTO.BusinessConfigDTOBuilder b = BusinessConfigDTO.builder()
-                .businessId(c.getBusinessId()).taxRate(c.getTaxRate()).currency(c.getCurrency())
+                .businessId(c.getBusinessId()).taxRate(c.getTaxRate()).currency(c.getCurrency()).currencySymbol(c.getCurrencySymbol()).currencyLocale(c.getCurrencyLocale())
                 .timezone(c.getTimezone()).dateFormat(c.getDateFormat())
                 .receiptPrefix(c.getReceiptPrefix()).invoicePrefix(c.getInvoicePrefix()).orderPrefix(c.getOrderPrefix())
                 .loyaltyPointsPerDollar(c.getLoyaltyPointsPerDollar()).minRedeemablePoints(c.getMinRedeemablePoints())
