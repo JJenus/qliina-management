@@ -82,6 +82,20 @@ public class AdminBusinessController {
     }
 
     // -----------------------------------------------------------------------
+    // Subscription / usage — accessible to billing & audit roles (not support)
+    // -----------------------------------------------------------------------
+
+    @GetMapping("/{businessId}/subscription")
+    @PreAuthorize("""
+        hasPermission(null, 'PLATFORM', 'platform.billing.manage')
+        or hasPermission(null, 'PLATFORM', 'platform.plans.manage')
+        or hasPermission(null, 'PLATFORM', 'platform.audit.view')
+    """)
+    public ResponseEntity<PlanUsageDTO> getBusinessSubscription(@PathVariable UUID businessId) {
+        return ResponseEntity.ok(planLimitService.getUsageSummary(businessId));
+    }
+
+    // -----------------------------------------------------------------------
     // Change plan tier
     // -----------------------------------------------------------------------
 

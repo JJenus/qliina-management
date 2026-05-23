@@ -43,8 +43,20 @@ public class SubscriptionController {
     // Authenticated: current business usage summary
     // -------------------------------------------------------------------------
 
+    /**
+     * Usage summary accessible by:
+     *   - Business owners/admins (business-scoped admin.settings)
+     *   - Platform staff with billing or audit view access
+     *     (SUPER_ADMIN, PLATFORM_ADMIN, BILLING_ADMIN, READONLY_AUDITOR)
+     *   SUPPORT_AGENT is intentionally excluded (no financial/billing data).
+     */
     @GetMapping("/api/v1/{businessId}/subscription")
-    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
+    @PreAuthorize("""
+        hasPermission(#businessId, 'BUSINESS', 'admin.settings')
+        or hasPermission(null, 'PLATFORM', 'platform.billing.manage')
+        or hasPermission(null, 'PLATFORM', 'platform.plans.manage')
+        or hasPermission(null, 'PLATFORM', 'platform.audit.view')
+    """)
     public ResponseEntity<PlanUsageDTO> getUsage(@PathVariable UUID businessId) {
         return ResponseEntity.ok(planLimitService.getUsageSummary(businessId));
     }
