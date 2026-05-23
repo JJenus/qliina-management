@@ -86,6 +86,9 @@ public class DataInitializer implements CommandLineRunner {
         perm("report.view.operational", "View Operational Reports", "View operational reports", "REPORTING", "BUSINESS", true);
         perm("report.export",           "Export Reports",           "Export reports",           "REPORTING", "BUSINESS", false);
 
+        // Expenses
+        perm("expenses.manage", "Manage Expenses", "Create, update and delete expense records", "REPORTING", "BUSINESS", false);
+
         // Inventory
         perm("inventory.view",   "View Inventory",   "View inventory items",           "INVENTORY", "SHOP", true);
         perm("inventory.manage", "Manage Inventory", "Create/update/delete inventory", "INVENTORY", "SHOP", false);
@@ -163,8 +166,8 @@ public class DataInitializer implements CommandLineRunner {
                      "quality.view", "quality.manage",
                      // Customer management (full control)
                      "customer.view", "customer.create", "customer.update",
-                     // Reporting (all reports)
-                     "report.view.operational", "report.view.financial", "report.export",
+                     // Reporting (all reports) + expense management
+                     "report.view.operational", "report.view.financial", "report.export", "expenses.manage",
                      // Notifications (view and update)
                      "notification.view", "notification.update",
                      // Employee management (full control)
