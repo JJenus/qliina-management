@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjenus.qliina_management.audit.dto.*;
 import com.jjenus.qliina_management.audit.model.AuditLog;
 import com.jjenus.qliina_management.audit.repository.AuditLogRepository;
+import com.jjenus.qliina_management.audit.repository.AuditLogSpecifications;
 import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
@@ -60,7 +61,7 @@ public class AuditService {
                 .changes(changes)
                 .ipAddress(request != null ? request.getRemoteAddr() : null)
                 .userAgent(request != null ? request.getHeader("User-Agent") : null)
-                .sessionId(request != null ? request.getSession().getId() : null)
+                .sessionId(request != null && request.getSession(false) != null ? request.getSession(false).getId() : null)
                 .requestId(UUID.randomUUID().toString())
                 .requestPath(request != null ? request.getRequestURI() : null)
                 .requestMethod(request != null ? request.getMethod() : null)
@@ -100,10 +101,16 @@ public class AuditService {
     
     @Transactional(readOnly = true)
     public PageResponse<AuditLogDTO> getAuditLogs(UUID businessId, AuditLogFilter filter, Pageable pageable) {
-        AuditLog.AuditSeverity severity = filter.getSeverity() != null ?
-            AuditLog.AuditSeverity.valueOf(filter.getSeverity()) : null;
-        
-        Page<AuditLog> page = auditLogRepository.searchAuditLogs(
+        AuditLog.AuditSeverity severity = null;
+        if (filter.getSeverity() != null && !filter.getSeverity().isBlank()) {
+            try {
+                severity = AuditLog.AuditSeverity.valueOf(filter.getSeverity().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown audit severity filter value: {}", filter.getSeverity());
+            }
+        }
+
+        var spec = AuditLogSpecifications.search(
             businessId,
             filter.getUserId(),
             filter.getEntityType(),
@@ -113,10 +120,10 @@ public class AuditService {
             severity,
             filter.getFromDate(),
             filter.getToDate(),
-            filter.getIpAddress(),
-            pageable
+            filter.getIpAddress()
         );
-        
+
+        Page<AuditLog> page = auditLogRepository.findAll(spec, pageable);
         return PageResponse.from(page.map(this::mapToDTO));
     }
     

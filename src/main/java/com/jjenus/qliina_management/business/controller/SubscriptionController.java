@@ -1,9 +1,11 @@
 package com.jjenus.qliina_management.business.controller;
 
+import com.jjenus.qliina_management.business.dto.BusinessDTO;
 import com.jjenus.qliina_management.business.dto.PlanUsageDTO;
 import com.jjenus.qliina_management.business.dto.SubscriptionPlanDTO;
 import com.jjenus.qliina_management.business.model.SubscriptionPlan;
 import com.jjenus.qliina_management.business.repository.SubscriptionPlanRepository;
+import com.jjenus.qliina_management.business.service.BusinessService;
 import com.jjenus.qliina_management.business.service.PlanLimitService;
 import com.jjenus.qliina_management.common.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,6 +30,7 @@ public class SubscriptionController {
 
     private final SubscriptionPlanRepository planRepository;
     private final PlanLimitService           planLimitService;
+    private final BusinessService            businessService;
 
     // -------------------------------------------------------------------------
     // Public: list active plans (for signup page, settings comparison table)
@@ -59,6 +63,30 @@ public class SubscriptionController {
     """)
     public ResponseEntity<PlanUsageDTO> getUsage(@PathVariable UUID businessId) {
         return ResponseEntity.ok(planLimitService.getUsageSummary(businessId));
+    }
+
+    // -------------------------------------------------------------------------
+    // Self-service: change plan (business owner)
+    // -------------------------------------------------------------------------
+
+    /**
+     * POST /api/v1/{businessId}/subscription/change-plan
+     * Body: { "plan": "STARTER" | "PRO" | "ENTERPRISE" | "FREE" }
+     *
+     * Accessible by business owners/admins (admin.settings permission).
+     * The plan is applied immediately; no payment processing — callers
+     * should integrate a payment step before or after this endpoint in production.
+     */
+    @PostMapping("/api/v1/{businessId}/subscription/change-plan")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
+    public ResponseEntity<BusinessDTO> changePlan(
+            @PathVariable UUID businessId,
+            @RequestBody Map<String, String> body) {
+        String plan = body.get("plan");
+        if (plan == null || plan.isBlank()) {
+            throw new BusinessException("'plan' field is required", "MISSING_PLAN", "plan");
+        }
+        return ResponseEntity.ok(businessService.changePlan(businessId, plan));
     }
 
     // -------------------------------------------------------------------------

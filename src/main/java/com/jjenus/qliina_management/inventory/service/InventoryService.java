@@ -480,12 +480,14 @@ public class InventoryService {
     public PageResponse<PurchaseOrderDTO> listPurchaseOrders(UUID businessId, UUID supplierId, UUID shopId,
                                                                String status, LocalDateTime fromDate,
                                                                LocalDateTime toDate, Pageable pageable) {
-        PurchaseOrder.PurchaseOrderStatus orderStatus = status != null ?
-            PurchaseOrder.PurchaseOrderStatus.valueOf(status) : null;
-        
-        Page<PurchaseOrder> page = purchaseOrderRepository.findByFilters(
-            businessId, supplierId, shopId, orderStatus, fromDate, toDate, pageable);
-        
+        PurchaseOrder.PurchaseOrderStatus orderStatus = (status != null && !status.isBlank()) ?
+            PurchaseOrder.PurchaseOrderStatus.valueOf(status.toUpperCase()) : null;
+
+        Specification<PurchaseOrder> spec = PurchaseOrderSpecifications.search(
+            businessId, supplierId, shopId, orderStatus, fromDate, toDate);
+
+        Page<PurchaseOrder> page = purchaseOrderRepository.findAll(spec, pageable);
+
         return PageResponse.from(page.map(this::mapToPurchaseOrderDTO));
     }
     

@@ -325,7 +325,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getDailyOrderSummary(businessId, date));
     }
     
-    // ======= Missing Endpoints from Service =======
+    // ======= Additional Order Utility Endpoints =======
     
     @Operation(
         summary = "Count pending orders",

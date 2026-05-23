@@ -34,6 +34,8 @@ public class BusinessConfigService {
         BusinessConfig c = configRepository.findByBusinessId(businessId).orElse(new BusinessConfig());
         c.setBusinessId(businessId);
         c.setTaxRate(dto.getTaxRate());                         c.setCurrency(dto.getCurrency());
+        if (dto.getCurrencySymbol() != null)  c.setCurrencySymbol(dto.getCurrencySymbol());
+        if (dto.getCurrencyLocale() != null)  c.setCurrencyLocale(dto.getCurrencyLocale());
         c.setTimezone(dto.getTimezone());                       c.setDateFormat(dto.getDateFormat());
         c.setReceiptPrefix(dto.getReceiptPrefix());             c.setInvoicePrefix(dto.getInvoicePrefix());
         c.setOrderPrefix(dto.getOrderPrefix());
@@ -71,8 +73,9 @@ public class BusinessConfigService {
     }
 
     private void applyDefaults(BusinessConfig c) {
-        c.setTaxRate(BigDecimal.ZERO); c.setCurrency("USD");
-        c.setTimezone("America/New_York"); c.setDateFormat("MM/dd/yyyy");
+        c.setTaxRate(BigDecimal.ZERO); c.setCurrency("NGN");
+        c.setCurrencySymbol("₦"); c.setCurrencyLocale("en-NG");
+        c.setTimezone("Africa/Lagos"); c.setDateFormat("dd/MM/yyyy");
         c.setReceiptPrefix("RCPT"); c.setInvoicePrefix("INV"); c.setOrderPrefix("ORD");
         c.setLoyaltyPointsPerDollar(10); c.setMinRedeemablePoints(100);
         c.setAutoArchiveDays(90); c.setAllowNegativeInventory(false); c.setRequireQualityCheck(true);

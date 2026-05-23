@@ -248,7 +248,7 @@ public class AuthService {
         String rt = jwtProvider.generateRefreshToken(ud);
         storeRefreshToken(user, rt, null);
         return AuthResponse.builder().accessToken(at).refreshToken(rt)
-                .tokenType("Bearer").expiresIn(86400000L).user(mapToUserInfo(user)).requires2FA(false).build();
+                .tokenType("Bearer").expiresIn(86400L).user(mapToUserInfo(user)).requires2FA(false).build();
     }
 
     private void storeRefreshToken(User user, String token, String deviceInfo) {

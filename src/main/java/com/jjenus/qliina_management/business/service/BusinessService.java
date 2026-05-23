@@ -178,7 +178,7 @@ public class BusinessService {
 
         return BusinessRegistrationResponse.builder()
                 .accessToken(accessToken).refreshToken(refreshToken)
-                .tokenType("Bearer").expiresIn(86400000L)
+                .tokenType("Bearer").expiresIn(86400L)
                 .businessId(businessId).businessSlug(slug).shopId(shop.getId())
                 .user(BusinessRegistrationResponse.UserInfo.builder()
                         .id(user.getId()).username(user.getUsername())
@@ -242,6 +242,36 @@ public class BusinessService {
                 .map(b -> b.getStatus() == Business.Status.ACTIVE
                        || b.getStatus() == Business.Status.TRIAL)
                 .orElse(false);
+    }
+
+    // -------------------------------------------------------------------------
+    // Subscription plan management
+    // -------------------------------------------------------------------------
+
+    /**
+     * Self-service plan change — called by business owner via settings.
+     * Validates the requested plan exists as a valid Business.Plan value,
+     * then persists the update.  The plan limit cache is automatically
+     * re-evaluated on the next request via PlanLimitService.
+     */
+    @Transactional
+    public BusinessDTO changePlan(UUID businessId, String requestedPlan) {
+        Business.Plan newPlan;
+        try {
+            newPlan = Business.Plan.valueOf(requestedPlan.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(
+                "Invalid plan '" + requestedPlan + "'. Valid values: "
+                + Arrays.stream(Business.Plan.values()).map(Enum::name).collect(Collectors.joining(", ")),
+                "INVALID_PLAN", "plan");
+        }
+        Business b = findOrThrow(businessId);
+        if (b.getPlan() == newPlan) {
+            throw new BusinessException("Business is already on plan '" + newPlan + "'", "SAME_PLAN", "plan");
+        }
+        b.setPlan(newPlan);
+        b.setUpdatedAt(LocalDateTime.now());
+        return toDTO(businessRepository.save(b));
     }
 
     // -------------------------------------------------------------------------
