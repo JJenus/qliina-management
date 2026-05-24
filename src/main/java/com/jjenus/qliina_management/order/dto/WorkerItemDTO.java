@@ -34,6 +34,12 @@ public class WorkerItemDTO {
     private LocalDateTime receivedAt;
     private LocalDateTime promisedDate;
     
+    /** Individual unit barcodes for multi-quantity items (null for single-unit items). */
+    private List<String> unitBarcodes;
+
+    /** Total number of units (null for single-unit items). */
+    private Integer totalUnits;
+
     // Actions available to the current worker
     private List<String> availableActions; // e.g., ["START", "COMPLETE"]
     

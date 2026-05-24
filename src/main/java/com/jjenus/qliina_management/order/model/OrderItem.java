@@ -68,6 +68,14 @@ public class OrderItem extends BaseEntity {
     @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @OrderBy("timestamp DESC")
     private List<ItemStatusHistory> statusHistory = new ArrayList<>();
+
+    /**
+     * Individual unit records for multi-quantity items.
+     * Empty for single-unit items (quantity == 1).
+     */
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("unitNumber ASC")
+    private List<OrderItemUnit> units = new ArrayList<>();
     
     public enum ItemStatus {
         PENDING, RECEIVED, WASHING, WASHED, IRONING, IRONED, 

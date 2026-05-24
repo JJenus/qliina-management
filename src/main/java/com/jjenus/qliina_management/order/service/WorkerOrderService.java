@@ -10,6 +10,7 @@ import com.jjenus.qliina_management.order.dto.WorkerItemDTO;
 import com.jjenus.qliina_management.order.model.*;
 import com.jjenus.qliina_management.order.repository.ItemWorkerInteractionRepository;
 import com.jjenus.qliina_management.order.repository.OrderItemRepository;
+import com.jjenus.qliina_management.order.repository.OrderItemUnitRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,7 @@ import java.util.stream.Collectors;
 public class WorkerOrderService {
 
     private final OrderItemRepository orderItemRepository;
+    private final OrderItemUnitRepository orderItemUnitRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ItemWorkerInteractionRepository interactionRepository;
@@ -255,7 +257,7 @@ public class WorkerOrderService {
                             .id(order.getId())
                             .orderId(order.getId())
                             .orderNumber(order.getOrderNumber())
-                            .serviceType("Delivery — " + order.getItemCount() + " items")
+                            .serviceType("Delivery — " + order.getItemCount() + " pieces")
                             .quantity(order.getItemCount())
                             .status(order.getStatus().toString())
                             .priority(order.getPriority().toString())
@@ -362,15 +364,27 @@ public class WorkerOrderService {
             // Not a UUID → continue
         }
     
-        // 2. Validate checksum BEFORE hitting DB
+        // 2. Unit barcode: format "FX78GLJ6-01" or "QL-FX78GLJ6-01" (2-digit suffix)
+        //    The 2-digit suffix distinguishes unit barcodes from single-item checksum barcodes.
+        String normalizedForUnit = itemId.startsWith("QL-") ? itemId.substring(3) : itemId;
+        if (normalizedForUnit.matches("[A-Z2-9]{8}-\\d{2,}")) {
+            String fullBarcode = "QL-" + normalizedForUnit;
+            Optional<OrderItemUnit> unit =
+                    orderItemUnitRepository.findByBusinessIdAndBarcode(businessId, fullBarcode);
+            if (unit.isPresent()) {
+                return unit.get().getOrderItem();
+            }
+        }
+
+        // 3. Validate checksum BEFORE hitting DB
         String id = itemId.contains("-") ? itemId.substring(3) : itemId;
         log.debug("Item ID: {}", id);
 
         if (!IdGenerator.isValidWithChecksum(id)) {
             throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
         }
-    
-        // 3. Safe to query
+
+        // 4. Safe to query
         return orderItemRepository.findByBusinessIdAndCode(businessId, itemId).orElseThrow(()-> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
     }
 
@@ -438,6 +452,16 @@ public class WorkerOrderService {
 
         boolean needsQC = item.getStatus() == OrderItem.ItemStatus.IRONED;
 
+        // Populate per-unit barcodes for multi-quantity items
+        List<String> unitBarcodes = null;
+        Integer totalUnits = null;
+        if (!item.getUnits().isEmpty()) {
+            unitBarcodes = item.getUnits().stream()
+                    .map(OrderItemUnit::getBarcode)
+                    .collect(Collectors.toList());
+            totalUnits = unitBarcodes.size();
+        }
+
         return WorkerItemDTO.builder()
                 .id(item.getId())
                 .shortId(item.getBarcode())
@@ -454,6 +478,8 @@ public class WorkerOrderService {
                 .priority(item.getOrder().getPriority().toString())
                 .receivedAt(item.getOrder().getReceivedAt())
                 .promisedDate(item.getOrder().getPromisedDate())
+                .unitBarcodes(unitBarcodes)
+                .totalUnits(totalUnits)
                 .availableActions(availableActions)
                 .needsQualityCheck(needsQC)
                 .build();

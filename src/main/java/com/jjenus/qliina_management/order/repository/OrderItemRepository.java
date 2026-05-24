@@ -62,4 +62,32 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    /**
+     * Counts distinct order items that this worker touched (any status change)
+     * within the given date range — used for worker performance tracking.
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT ish.orderItem.id)
+        FROM ItemStatusHistory ish
+        WHERE ish.updatedBy = :workerId
+          AND ish.timestamp BETWEEN :start AND :end
+        """)
+    Long countDistinctItemsProcessedByWorker(
+            @Param("workerId") UUID workerId,
+            @Param("start")    LocalDateTime start,
+            @Param("end")      LocalDateTime end);
+
+    /**
+     * Same count scoped to a single calendar date — used for daily breakdowns.
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT ish.orderItem.id)
+        FROM ItemStatusHistory ish
+        WHERE ish.updatedBy = :workerId
+          AND CAST(ish.timestamp AS date) = :date
+        """)
+    Long countDistinctItemsProcessedByWorkerOnDate(
+            @Param("workerId") UUID workerId,
+            @Param("date")     java.time.LocalDate date);
+
 }

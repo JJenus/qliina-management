@@ -165,7 +165,7 @@ public class EmployeeController {
         @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/current-shift")
-    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.view')")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.clock')")
     public ResponseEntity<ShiftDTO> getCurrentShift(
             @Parameter(description = "Business ID", required = true)
             @PathVariable UUID businessId,

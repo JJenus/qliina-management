@@ -9,6 +9,7 @@ import com.jjenus.qliina_management.employee.dto.*;
 import com.jjenus.qliina_management.employee.model.*;
 import com.jjenus.qliina_management.employee.repository.*;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
+import com.jjenus.qliina_management.order.repository.OrderItemRepository;
 import com.jjenus.qliina_management.quality.repository.QualityCheckRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,7 @@ public class EmployeeService {
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final QualityCheckRepository qualityCheckRepository;
     
     // ==================== Shift Management ====================
@@ -534,10 +536,26 @@ public class EmployeeService {
         User employee = userRepository.findById(employeeId)
             .orElseThrow(() -> new BusinessException("Employee not found", "EMPLOYEE_NOT_FOUND"));
         
+        // Determine if this employee is a processing worker (WASHER / IRONER)
+        // — their performance is measured by items they processed, not orders they created.
+        boolean isProcessingWorker = employee.getRoles().stream()
+                .anyMatch(ur -> Set.of("WASHER", "IRONER").contains(ur.getRole().getName()));
+
         // Calculate metrics
-        Integer ordersProcessed = orderRepository.countByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
-        Integer itemsProcessed = orderRepository.countItemsByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
-        BigDecimal revenueHandled = orderRepository.sumRevenueByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+        Integer ordersProcessed;
+        Integer itemsProcessed;
+        BigDecimal revenueHandled;
+        if (isProcessingWorker) {
+            Long wi = orderItemRepository.countDistinctItemsProcessedByWorker(
+                    employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+            itemsProcessed  = wi != null ? wi.intValue() : 0;
+            ordersProcessed = 0;
+            revenueHandled  = BigDecimal.ZERO;
+        } else {
+            ordersProcessed = orderRepository.countByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+            itemsProcessed  = orderRepository.countItemsByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+            revenueHandled  = orderRepository.sumRevenueByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+        }
         
         Double qualityScore = qualityCheckRepository.averageScoreByEmployeeIdAndDateRange(employeeId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
         
@@ -565,14 +583,24 @@ public class EmployeeService {
         List<EmployeePerformanceDTO.DailyMetricDTO> dailyMetrics = new ArrayList<>();
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
             LocalDate currentDate = date;
-            Integer dailyOrders = orderRepository.countByEmployeeIdAndDate(employeeId, currentDate);
-            Integer dailyItems = orderRepository.countItemsByEmployeeIdAndDate(employeeId, currentDate);
+            int dailyOrdersVal;
+            int dailyItemsVal;
+            if (isProcessingWorker) {
+                Long wi = orderItemRepository.countDistinctItemsProcessedByWorkerOnDate(employeeId, currentDate);
+                dailyItemsVal  = wi != null ? wi.intValue() : 0;
+                dailyOrdersVal = 0;
+            } else {
+                Integer dailyOrders = orderRepository.countByEmployeeIdAndDate(employeeId, currentDate);
+                Integer dailyItems  = orderRepository.countItemsByEmployeeIdAndDate(employeeId, currentDate);
+                dailyOrdersVal = dailyOrders != null ? dailyOrders : 0;
+                dailyItemsVal  = dailyItems  != null ? dailyItems  : 0;
+            }
             Double dailyQuality = qualityCheckRepository.averageScoreByEmployeeIdAndDate(employeeId, currentDate);
-            
+
             dailyMetrics.add(EmployeePerformanceDTO.DailyMetricDTO.builder()
                 .date(date)
-                .orders(dailyOrders != null ? dailyOrders : 0)
-                .items(dailyItems != null ? dailyItems : 0)
+                .orders(dailyOrdersVal)
+                .items(dailyItemsVal)
                 .quality(dailyQuality != null ? dailyQuality : 0.0)
                 .build());
         }

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.TimeZone;
+
 @Configuration
 public class JacksonConfig {
 
@@ -18,6 +20,10 @@ public class JacksonConfig {
 
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+        // Serialize all LocalDateTime fields as UTC ISO-8601 strings so JS
+        // engines on any client timezone parse elapsed-time correctly.
+        mapper.setTimeZone(TimeZone.getTimeZone("UTC"));
 
         return mapper;
     }

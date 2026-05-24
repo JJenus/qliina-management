@@ -6,11 +6,15 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.customer.repository.CustomerRepository;
 import com.jjenus.qliina_management.customer.service.CustomerService;
+import com.jjenus.qliina_management.business.model.Business;
 import com.jjenus.qliina_management.business.model.Shop;
+import com.jjenus.qliina_management.business.repository.BusinessRepository;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.dto.*;
+import com.jjenus.qliina_management.order.dto.ReturnOrderRequest;
 import com.jjenus.qliina_management.order.model.*;
+import com.jjenus.qliina_management.order.repository.OrderItemUnitRepository;
 import com.jjenus.qliina_management.order.repository.OrderItemRepository;
 import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
@@ -28,6 +32,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.business.service.PlanLimitService;
+import com.jjenus.qliina_management.business.model.ServiceType;
+import com.jjenus.qliina_management.business.model.GarmentType;
+import com.jjenus.qliina_management.business.repository.ServiceTypeRepository;
+import com.jjenus.qliina_management.business.repository.GarmentTypeRepository;
 import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.common.util.SecurityContextUtil;
 
@@ -48,11 +56,14 @@ public class OrderService {
     private final OrderPaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
     private final ShopRepository shopRepository;
+    private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
     private final CustomerService customerService;
     private final PaymentService paymentService;
     private final QualityCheckRepository qualityCheckRepository;
     private final PlanLimitService planLimitService;
+    private final ServiceTypeRepository serviceTypeRepository;
+    private final GarmentTypeRepository garmentTypeRepository;
     
     private UUID getCurrentUserId() {
         return SecurityContextUtil.getCurrentUserId().orElse(null);
@@ -132,8 +143,19 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             item.setOrder(order);
             item.setItemNumber(itemTrackingNumber.substring(3));
             item.setBarcode(itemTrackingNumber);
-            item.setServiceType(itemDto.getServiceTypeId().toString());
-            item.setGarmentType(itemDto.getGarmentTypeId() != null ? itemDto.getGarmentTypeId().toString() : null);
+            // Resolve catalog UUIDs to human-readable names so the UI never
+            // shows raw UUIDs in the service-type / garment-type columns.
+            String resolvedServiceType = serviceTypeRepository.findById(itemDto.getServiceTypeId())
+                    .map(ServiceType::getName)
+                    .orElse(itemDto.getServiceTypeId().toString());
+            item.setServiceType(resolvedServiceType);
+
+            String resolvedGarmentType = (itemDto.getGarmentTypeId() != null)
+                    ? garmentTypeRepository.findById(itemDto.getGarmentTypeId())
+                            .map(GarmentType::getName)
+                            .orElse(itemDto.getGarmentTypeId().toString())
+                    : null;
+            item.setGarmentType(resolvedGarmentType);
             item.setDescription(itemDto.getDescription());
             item.setQuantity(itemDto.getQuantity());
             item.setWeight(itemDto.getWeight() != null ? BigDecimal.valueOf(itemDto.getWeight()) : null);
@@ -156,12 +178,33 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
                 item.setImages(new ArrayList<>(itemDto.getImages()));
             }
             
+            // For multi-quantity items, generate per-unit barcodes so each
+            // physical piece gets its own scannable ID (e.g. "QL-FX78GLJ6-01").
+            if (itemDto.getQuantity() > 1) {
+                String batchBase = IdGenerator.generateBatchBase();
+                List<OrderItemUnit> units = new ArrayList<>();
+                for (int n = 1; n <= itemDto.getQuantity(); n++) {
+                    OrderItemUnit unit = new OrderItemUnit();
+                    unit.setOrderItem(item);
+                    unit.setUnitNumber(n);
+                    unit.setBarcode(IdGenerator.generateUnitBarcode(batchBase, n));
+                    units.add(unit);
+                }
+                item.setUnits(units);
+                // Override the item-level barcode/itemNumber to use the batch base
+                item.setBarcode("QL-" + batchBase);
+                item.setItemNumber(batchBase);
+            }
+
             items.add(item);
             totalAmount = totalAmount.add(subtotal);
         }
-        
+
         order.setItems(items);
-        order.setItemCount(items.size());
+        // itemCount stores total individual pieces (sum of quantities),
+        // not the number of line-item rows, so "3 shirts" counts as 3.
+        int totalQuantity = items.stream().mapToInt(OrderItem::getQuantity).sum();
+        order.setItemCount(totalQuantity);
         
         // Apply discounts
         if (request.getDiscounts() != null) {
@@ -335,7 +378,20 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     
         // Validate status transition
         validateStatusTransition(previousStatus, newStatus);
-    
+
+        // Block processing-worker roles from order-level status changes.
+        // WASHER / IRONER / DELIVERY must use WorkerOrderController item endpoints.
+        UUID callerId = SecurityContextUtil.requireUserId();
+        userRepository.findById(callerId).ifPresent(caller ->
+            caller.getRoles().stream()
+                .map(ur -> ur.getRole().getName())
+                .filter(name -> Set.of("WASHER", "IRONER", "DELIVERY").contains(name))
+                .findFirst()
+                .ifPresent(role -> { throw new BusinessException(
+                    "Workers cannot perform order-level status changes. Use the work-queue.",
+                    "INSUFFICIENT_ROLE"); })
+        );
+
         // Update order status
         order.setStatus(newStatus);
     
@@ -486,6 +542,96 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             .build();
     }
     
+    /**
+     * Processes a customer return on a COMPLETED (or OUT_FOR_DELIVERY) order.
+     * <p>
+     * Transitions the order to RETURNED, marks the specified items (or all items)
+     * as ISSUE_REPORTED, records an order note with the customer's reason, and adds
+     * a RETURN_INITIATED timeline event. If a refund is requested, that is noted in the
+     * timeline for finance review. The manager then re-runs quality check via the normal
+     * RETURNED → QUALITY_CHECK transition.
+     */
+    @Transactional
+    public OrderDetailDTO returnOrder(UUID businessId, UUID orderId, ReturnOrderRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+
+        if (order.getStatus() != Order.OrderStatus.COMPLETED
+                && order.getStatus() != Order.OrderStatus.OUT_FOR_DELIVERY) {
+            throw new BusinessException(
+                    "Only COMPLETED or OUT_FOR_DELIVERY orders can be returned",
+                    "INVALID_ORDER_STATE");
+        }
+
+        UUID currentUserId = getCurrentUserId();
+        String userName = getUserName(currentUserId);
+        LocalDateTime now = LocalDateTime.now();
+
+        // Transition order to RETURNED
+        order.setStatus(Order.OrderStatus.RETURNED);
+        order.setCompletedAt(null); // no longer complete
+
+        // Determine which items are being returned
+        List<OrderItem> returnedItems;
+        if (request.getItemIds() == null || request.getItemIds().isEmpty()) {
+            returnedItems = order.getItems();
+        } else {
+            Set<UUID> returnIds = new HashSet<>(request.getItemIds());
+            returnedItems = order.getItems().stream()
+                    .filter(i -> returnIds.contains(i.getId()))
+                    .collect(Collectors.toList());
+        }
+
+        // Mark each returned item as ISSUE_REPORTED and record history
+        for (OrderItem item : returnedItems) {
+            item.setStatus(OrderItem.ItemStatus.ISSUE_REPORTED);
+            ItemStatusHistory itemHistory = new ItemStatusHistory();
+            itemHistory.setOrderItem(item);
+            itemHistory.setStatus(OrderItem.ItemStatus.ISSUE_REPORTED.toString());
+            itemHistory.setTimestamp(now);
+            itemHistory.setUpdatedBy(currentUserId);
+            itemHistory.setNotes("Customer return: " + request.getReason());
+            item.getStatusHistory().add(itemHistory);
+        }
+
+        // Add customer-visible note with the return reason
+        OrderNote note = new OrderNote();
+        note.setOrder(order);
+        note.setContent("Customer return — " + request.getReason()
+                + (request.getCustomerNotes() != null ? "\nCustomer notes: " + request.getCustomerNotes() : ""));
+        note.setType("RETURN");
+        note.setIsCustomerVisible(true);
+        order.getNotes().add(note);
+
+        // Timeline event
+        String timelineDesc = "Return initiated by " + userName + ". Reason: " + request.getReason()
+                + (request.isRefundRequested() ? " [REFUND REQUESTED — pending finance review]" : "");
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("RETURN_INITIATED");
+        timeline.setStatus(Order.OrderStatus.RETURNED.toString());
+        timeline.setDescription(timelineDesc);
+        timeline.setTimestamp(now);
+        timeline.setUserId(currentUserId);
+        timeline.setUserName(userName);
+        order.getTimeline().add(timeline);
+
+        order = orderRepository.save(order);
+
+        // Broadcast
+        webSocketPublisher.publishOrderUpdate(
+                order.getBusinessId(), order.getId(),
+                OrderStatusDTO.builder()
+                        .orderId(order.getId())
+                        .businessId(order.getBusinessId())
+                        .status(order.getStatus().toString())
+                        .updatedAt(now)
+                        .updatedBy(userName)
+                        .build());
+
+        return mapToOrderDetailDTO(order);
+    }
+
     @Transactional(readOnly = true)
     public DailyOrdersSummaryDTO getDailyOrderSummary(UUID businessId, LocalDateTime date) {
         LocalDateTime startOfDay = date.toLocalDate().atStartOfDay();
@@ -595,6 +741,70 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         return mapToDetailDTO(order);
     }
     
+    // ── Public order tracking ──────────────────────────────────────────────────
+
+    /**
+     * Returns a minimal, privacy-safe order summary for unauthenticated
+     * customer-facing tracking pages. No prices, no full customer details.
+     */
+    public PublicOrderTrackDTO getPublicTrackingInfo(String trackingNumber) {
+        Order order = orderRepository.findByTrackingNumber(trackingNumber)
+                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+
+        List<PublicOrderTrackDTO.ItemRow> itemRows = order.getItems().stream()
+                .map(i -> PublicOrderTrackDTO.ItemRow.builder()
+                        .serviceType(i.getServiceType())
+                        .garmentType(i.getGarmentType())
+                        .quantity(i.getQuantity())
+                        .status(i.getStatus().toString())
+                        .build())
+                .collect(Collectors.toList());
+
+        List<PublicOrderTrackDTO.TimelineRow> timelineRows = order.getTimeline().stream()
+                .sorted(Comparator.comparing(OrderTimeline::getTimestamp).reversed())
+                .limit(5)
+                .map(t -> PublicOrderTrackDTO.TimelineRow.builder()
+                        .status(t.getStatus())
+                        .description(t.getDescription())
+                        .timestamp(t.getTimestamp())
+                        .build())
+                .collect(Collectors.toList());
+
+        // Resolve shop and business names safely (null-guarded)
+        String shopName = null;
+        String businessName = null;
+        if (order.getShopId() != null) {
+            shopName = shopRepository.findById(order.getShopId())
+                    .map(Shop::getName).orElse(null);
+        }
+        if (order.getBusinessId() != null) {
+            businessName = businessRepository.findById(order.getBusinessId())
+                    .map(Business::getName).orElse(null);
+        }
+
+        // Customer first name only — enough for personalisation without exposing PII
+        String customerFirstName = null;
+        if (order.getCustomerId() != null) {
+            customerFirstName = customerRepository.findById(order.getCustomerId())
+                    .map(c -> c.getFirstName()).orElse(null);
+        }
+
+        return PublicOrderTrackDTO.builder()
+                .orderNumber(order.getOrderNumber())
+                .trackingNumber(order.getTrackingNumber())
+                .status(order.getStatus().toString())
+                .priority(order.getPriority().toString())
+                .shopName(shopName)
+                .businessName(businessName)
+                .customerFirstName(customerFirstName)
+                .receivedAt(order.getReceivedAt())
+                .promisedDate(order.getPromisedDate())
+                .completedAt(order.getCompletedAt())
+                .items(itemRows)
+                .recentTimeline(timelineRows)
+                .build();
+    }
+
     private void validateStatusTransition(Order.OrderStatus from, Order.OrderStatus to) {
         // Define allowed transitions
         Map<Order.OrderStatus, List<Order.OrderStatus>> allowedTransitions = Map.of(
@@ -605,7 +815,9 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             Order.OrderStatus.IRONED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.ARCHIVED),
             Order.OrderStatus.QUALITY_CHECK, List.of(Order.OrderStatus.READY_FOR_PICKUP, Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED),
             Order.OrderStatus.READY_FOR_PICKUP, List.of(Order.OrderStatus.OUT_FOR_DELIVERY, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.OUT_FOR_DELIVERY, List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)
+            Order.OrderStatus.OUT_FOR_DELIVERY, List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.COMPLETED, List.of(Order.OrderStatus.RETURNED, Order.OrderStatus.ARCHIVED),
+            Order.OrderStatus.RETURNED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)
         );
         
         List<Order.OrderStatus> allowed = allowedTransitions.get(from);

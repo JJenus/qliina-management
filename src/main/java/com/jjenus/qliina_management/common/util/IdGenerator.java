@@ -66,6 +66,32 @@ public final class IdGenerator {
     }
 
     // =========================================================
+    // MULTI-UNIT (BATCH) IDS
+    // =========================================================
+
+    /**
+     * Generates the 8-char base shared by all units of one item line.
+     * All unit barcodes for the same line share this base, so staff can
+     * visually group them: "QL-FX78GLJ6-01", "QL-FX78GLJ6-02", …
+     */
+    public static String generateBatchBase() {
+        return generate(DEFAULT_ITEM_LENGTH);
+    }
+
+    /**
+     * Full scannable barcode for one unit within a multi-quantity item line.
+     * Format: "QL-{batchBase}-{nn}" where nn is zero-padded 2-digit unit number.
+     *
+     * The 2-digit suffix distinguishes unit barcodes from single-item checksum
+     * barcodes which use a single-digit suffix ("-0"…"-9").
+     *
+     * Example: generateUnitBarcode("FX78GLJ6", 3) → "QL-FX78GLJ6-03"
+     */
+    public static String generateUnitBarcode(String batchBase, int unitNum) {
+        return "QL-" + batchBase + "-" + String.format("%02d", unitNum);
+    }
+
+    // =========================================================
     // ORDER IDS
     // =========================================================
 

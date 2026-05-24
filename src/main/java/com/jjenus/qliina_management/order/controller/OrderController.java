@@ -426,6 +426,31 @@ public class OrderController {
         return ResponseEntity.ok(SuccessResponse.of("Attachment deleted successfully"));
     }
     
+    // ======= Customer Returns =======
+
+    @Operation(
+        summary = "Process customer return",
+        description = "Transitions a COMPLETED order back to RETURNED status. " +
+                      "Items are marked ISSUE_REPORTED. Manager re-runs quality check afterwards."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Return processed"),
+        @ApiResponse(responseCode = "400", description = "Order not in a returnable state"),
+        @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @PostMapping("/{orderId}/return")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<OrderDetailDTO> returnOrder(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Parameter(description = "Order ID", required = true)
+            @PathVariable UUID orderId,
+
+            @Valid @RequestBody ReturnOrderRequest request) {
+        return ResponseEntity.ok(orderService.returnOrder(businessId, orderId, request));
+    }
+
     // ======= Bulk Operations =======
     
     @Operation(
