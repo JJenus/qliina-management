@@ -567,6 +567,10 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         String userName = getUserName(currentUserId);
         LocalDateTime now = LocalDateTime.now();
 
+        // Capture previous status before transition so the WebSocket broadcast
+        // can carry both previousStatus and currentStatus (matches OrderStatusDTO contract).
+        Order.OrderStatus previousStatus = order.getStatus();
+
         // Transition order to RETURNED
         order.setStatus(Order.OrderStatus.RETURNED);
         order.setCompletedAt(null); // no longer complete
@@ -618,18 +622,19 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
 
         order = orderRepository.save(order);
 
-        // Broadcast
+        // Broadcast real-time update — payload matches OrderStatusDTO contract
+        // used by updateOrderStatus() and expected by the frontend's OrderStatusDTO type.
         webSocketPublisher.publishOrderUpdate(
                 order.getBusinessId(), order.getId(),
                 OrderStatusDTO.builder()
                         .orderId(order.getId())
-                        .businessId(order.getBusinessId())
-                        .status(order.getStatus().toString())
+                        .previousStatus(previousStatus.toString())
+                        .currentStatus(order.getStatus().toString())
                         .updatedAt(now)
                         .updatedBy(userName)
                         .build());
 
-        return mapToOrderDetailDTO(order);
+        return mapToDetailDTO(order);
     }
 
     @Transactional(readOnly = true)
@@ -851,8 +856,9 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             case IRONED -> OrderItem.ItemStatus.IRONED;
             case QUALITY_CHECK -> OrderItem.ItemStatus.QUALITY_CHECK;
             case READY_FOR_PICKUP -> OrderItem.ItemStatus.COMPLETED;
-            // These order statuses don't have item-level equivalents
-            case OUT_FOR_DELIVERY, COMPLETED, ARCHIVED, DRAFT -> null;
+            // These order statuses don't have item-level equivalents.
+            // RETURNED items are individually marked ISSUE_REPORTED by returnOrder().
+            case OUT_FOR_DELIVERY, COMPLETED, RETURNED, ARCHIVED, DRAFT -> null;
         };
     }
     
