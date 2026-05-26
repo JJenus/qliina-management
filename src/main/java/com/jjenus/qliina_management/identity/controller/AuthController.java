@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,9 +28,8 @@ import java.util.UUID;
 
 /**
  * Authentication and session management endpoints.
- * All routes under /api/v1/auth/** are permit-all in SecurityConfig,
- * but the JWT filter still populates the security context when a valid
- * Bearer token is present — so GET /me is effectively authenticated.
+ * All routes under /api/v1/auth/** are public (no JWT required).
+ * The current-user profile endpoint lives at GET /api/v1/users/me (ProfileController).
  */
 @Tag(name = "Authentication", description = "Authentication, registration, and session management")
 @RestController
@@ -43,36 +41,7 @@ public class AuthController {
     private final UserRepository userRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // NEW: GET /api/v1/auth/me
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @Operation(
-        summary     = "Get current user",
-        description = "Returns the authenticated user's profile, roles, and permissions. "
-                    + "Requires a valid Bearer access token in the Authorization header.",
-        security    = @SecurityRequirement(name = "bearerAuth")
-    )
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Current user info",
-            content = @Content(schema = @Schema(implementation = AuthResponse.UserInfo.class))),
-        @ApiResponse(responseCode = "401", description = "Missing or invalid token",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    @GetMapping("/me")
-    public ResponseEntity<AuthResponse.UserInfo> me(
-            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
-
-        if (userDetails == null) {
-            // Guard: shouldn't reach here with a proper JWT, but fail fast and clearly.
-            throw new UsernameNotFoundException("No authenticated user");
-        }
-
-        UUID userId = resolveUserId(userDetails);
-        return ResponseEntity.ok(authService.getCurrentUserInfo(userId));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Existing endpoints (unchanged)
+    // Public auth endpoints (no JWT required — all under /api/v1/auth/**)
     // ─────────────────────────────────────────────────────────────────────────
 
     @Operation(summary = "Register a new business",
@@ -158,7 +127,11 @@ public class AuthController {
     public ResponseEntity<SuccessResponse> changePassword(
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ChangePasswordRequest request) {
-        authService.changePassword(resolveUserId(userDetails), request);
+        if (userDetails == null) throw new UsernameNotFoundException("No authenticated user");
+        UUID userId = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userDetails.getUsername()))
+                .getId();
+        authService.changePassword(userId, request);
         return ResponseEntity.ok(SuccessResponse.of("Password changed successfully"));
     }
 
@@ -193,14 +166,4 @@ public class AuthController {
         return ResponseEntity.ok(SuccessResponse.of("2FA disabled successfully"));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Private helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private UUID resolveUserId(UserDetails userDetails) {
-        if (userDetails == null) throw new UsernameNotFoundException("No authenticated user");
-        return userRepository.findByUsername(userDetails.getUsername())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userDetails.getUsername()))
-                .getId();
-    }
 }

@@ -20,8 +20,8 @@ public interface UserDeviceRepository extends JpaRepository<UserDevice, UUID> {
     Optional<UserDevice> findByPushToken(String pushToken);
     
     @Query("SELECT ud FROM UserDevice ud WHERE ud.userId = :userId AND ud.deviceId = :deviceId")
-    Optional<UserDevice> findByUserIdAndDeviceId(@Param("userId") UUID userId,
-                                                   @Param("deviceId") String deviceId);
+    List<UserDevice> findByUserIdAndDeviceId(@Param("userId") UUID userId,
+                                              @Param("deviceId") String deviceId);
     
     @Modifying
     @Query("UPDATE UserDevice ud SET ud.isActive = false WHERE ud.userId = :userId")

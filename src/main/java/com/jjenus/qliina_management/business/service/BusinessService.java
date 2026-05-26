@@ -89,10 +89,16 @@ public class BusinessService {
             throw new BusinessException("Phone already registered", "PHONE_EXISTS", "phone");
         }
 
-        // 3. Shop code uniqueness
-        String upperCode = request.getShopCode().toUpperCase();
+        // 3. Shop code uniqueness — auto-generate if not provided
+        String rawCode = (request.getShopCode() != null && !request.getShopCode().isBlank())
+                ? request.getShopCode()
+                : request.getShopName().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+        String upperCode = rawCode.toUpperCase();
+        // Ensure uniqueness by appending a counter if needed
         if (shopRepository.existsByCode(upperCode)) {
-            throw new BusinessException("Shop code already in use", "SHOP_CODE_EXISTS", "shopCode");
+            int suffix = 1;
+            while (shopRepository.existsByCode(upperCode + suffix)) suffix++;
+            upperCode = upperCode + suffix;
         }
 
         // 4. Build unique slug

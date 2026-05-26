@@ -79,27 +79,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-protected boolean shouldNotFilter(HttpServletRequest request) {
-    String path = request.getRequestURI();
-    String contextPath = request.getContextPath();
-    
-    if (contextPath != null && !contextPath.isEmpty()) {
-        path = path.substring(contextPath.length());
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty()) {
+            path = path.substring(contextPath.length());
+        }
+
+        log.debug("Checking if filter should apply for path: {}, servletPath: {}, requestURI: {}",
+                  path, request.getServletPath(), request.getRequestURI());
+
+        // Explicitly list public (no-auth) endpoints only.
+        // /api/v1/auth/** is permit-all in SecurityConfig, but we still want the JWT filter
+        // to run for any auth-prefix path that might require a principal in the future.
+        // Using exact/prefix matches here keeps the rule explicit and avoids accidentally
+        // bypassing new authenticated endpoints added under /api/v1/auth/.
+        boolean shouldNotFilter =
+                path.equals("/api/v1/auth/login")             ||
+                path.equals("/api/v1/auth/register-business") ||
+                path.equals("/api/v1/auth/refresh")           ||
+                path.equals("/api/v1/auth/forgot-password")   ||
+                path.equals("/api/v1/auth/reset-password")    ||
+                path.equals("/api/v1/auth/verify-2fa")        ||
+                path.equals("/api/v1/auth/setup-2fa")         ||
+                path.equals("/api/v1/auth/disable-2fa")       ||
+                path.equals("/api/v1/auth/logout")            ||
+                path.startsWith("/swagger-ui")                ||
+                path.startsWith("/v3/api-docs")               ||
+                path.startsWith("/actuator/health");
+
+        if (shouldNotFilter) {
+            log.debug("Bypassing JWT filter for path: {}", path);
+        }
+
+        return shouldNotFilter;
     }
-    
-    // Debug logging
-    log.debug("Checking if filter should apply for path: {}, servletPath: {}, requestURI: {}", 
-              path, request.getServletPath(), request.getRequestURI());
-    
-    boolean shouldNotFilter = path.startsWith("/api/v1/auth/") ||
-                              path.startsWith("/swagger-ui") ||
-                              path.startsWith("/api-docs") ||
-                              path.startsWith("/actuator/health");
-    
-    if (shouldNotFilter) {
-        log.debug("Bypassing JWT filter for path: {}", path);
-    }
-    
-    return shouldNotFilter;
-}
 }

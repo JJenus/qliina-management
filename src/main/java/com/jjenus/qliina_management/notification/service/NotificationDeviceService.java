@@ -29,8 +29,9 @@ public class NotificationDeviceService {
     
     @Transactional
     public UserDeviceDTO registerDevice(UUID businessId, UUID userId, RegisterDeviceRequest request) {
+        // Deactivate all existing records for this user+device (guards against duplicates)
         userDeviceRepository.findByUserIdAndDeviceId(userId, request.getDeviceId())
-            .ifPresent(device -> {
+            .forEach(device -> {
                 device.setIsActive(false);
                 userDeviceRepository.save(device);
             });
@@ -60,7 +61,7 @@ public class NotificationDeviceService {
     @Transactional
     public void unregisterDevice(UUID userId, String deviceId) {
         userDeviceRepository.findByUserIdAndDeviceId(userId, deviceId)
-            .ifPresent(device -> {
+            .forEach(device -> {
                 device.setIsActive(false);
                 userDeviceRepository.save(device);
             });
