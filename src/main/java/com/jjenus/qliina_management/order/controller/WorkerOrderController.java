@@ -54,7 +54,10 @@ public class WorkerOrderController {
             @PathVariable UUID businessId,
             
             @Parameter(description = "Item ID (short ID or UUID)", required = true)
-            @PathVariable @Pattern(regexp = "^[A-Z0-9-]+$", message = "Invalid item ID format") 
+            @Pattern(
+                regexp = "^[A-Za-z0-9-]+$",
+                message = "Invalid item ID format"
+            ) 
             String itemId) {
         
         UUID workerId = SecurityContextUtil.requireUserId();

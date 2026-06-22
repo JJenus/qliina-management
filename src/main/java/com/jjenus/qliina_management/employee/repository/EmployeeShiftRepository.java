@@ -3,7 +3,9 @@ package com.jjenus.qliina_management.employee.repository;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -28,9 +30,26 @@ Long countActiveEmployees(@Param("shopId") UUID shopId);
     Optional<EmployeeShift> findByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
                                                      @Param("date") LocalDate date);
     
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT es FROM EmployeeShift es WHERE es.employeeId = :employeeId " +
            "AND es.status IN ('CHECKED_IN', 'ON_BREAK')")
     Optional<EmployeeShift> findActiveShift(@Param("employeeId") UUID employeeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT es FROM EmployeeShift es WHERE es.employeeId = :employeeId " +
+           "AND es.status = 'SUSPENDED'")
+    Optional<EmployeeShift> findSuspendedShift(@Param("employeeId") UUID employeeId);
+
+    @Query("SELECT es FROM EmployeeShift es WHERE es.status IN ('CHECKED_IN', 'ON_BREAK') " +
+           "AND es.lastActivityAt IS NOT NULL")
+    List<EmployeeShift> findCandidatesForIdleCheck();
+
+    @Query("SELECT es FROM EmployeeShift es WHERE es.status IN ('CHECKED_IN', 'ON_BREAK', 'SUSPENDED') " +
+           "AND es.businessId = :businessId")
+    List<EmployeeShift> findAllActiveByBusinessId(@Param("businessId") UUID businessId);
+
+    @Query("SELECT es FROM EmployeeShift es WHERE es.status IN ('CHECKED_IN', 'ON_BREAK', 'SUSPENDED')")
+    List<EmployeeShift> findAllActiveShifts();
     
     @Query("SELECT es FROM EmployeeShift es WHERE es.shopId = :shopId AND es.date = :date")
     List<EmployeeShift> findByShopIdAndDate(@Param("shopId") UUID shopId,

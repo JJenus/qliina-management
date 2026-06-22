@@ -5,9 +5,11 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -70,17 +72,30 @@ public class EmployeeShift extends BaseTenantEntity {
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
     
+    @Column(name = "suspended_at")
+    private LocalDateTime suspendedAt;
+    
+    @Column(name = "total_suspend_minutes")
+    private Integer totalSuspendMinutes = 0;
+    
+    @Column(name = "auto_closed")
+    private boolean autoClosed = false;
+    
+    @Column(name = "last_activity_at")
+    private LocalDateTime lastActivityAt;
+    
     public enum ShiftStatus {
-        SCHEDULED, CHECKED_IN, ON_BREAK, CHECKED_OUT, ABSENT, CANCELLED, COMPLETED
+        SCHEDULED, CHECKED_IN, ON_BREAK, SUSPENDED, CHECKED_OUT, ABSENT, CANCELLED, COMPLETED
     }
     
     public void calculateWorkMinutes() {
         if (actualStart != null && actualEnd != null) {
-            long totalMinutes = java.time.Duration.between(actualStart, actualEnd).toMinutes();
-            this.totalWorkMinutes = (int) (totalMinutes - totalBreakMinutes);
+            long totalMinutes = Duration.between(actualStart, actualEnd).toMinutes();
+            int nonWorkMinutes = totalBreakMinutes != null ? totalBreakMinutes : 0;
+            nonWorkMinutes += totalSuspendMinutes != null ? totalSuspendMinutes : 0;
+            this.totalWorkMinutes = (int) (totalMinutes - nonWorkMinutes);
             
-            // Calculate overtime
-            long scheduledMinutes = java.time.Duration.between(scheduledStart, scheduledEnd).toMinutes();
+            long scheduledMinutes = Duration.between(scheduledStart, scheduledEnd).toMinutes();
             if (totalWorkMinutes > scheduledMinutes) {
                 this.overtimeMinutes = (int) (totalWorkMinutes - scheduledMinutes);
             }
@@ -95,13 +110,40 @@ public class EmployeeShift extends BaseTenantEntity {
     public void endBreak() {
         this.breakEnd = LocalDateTime.now();
         if (breakStart != null) {
-            long breakMinutes = java.time.Duration.between(breakStart, breakEnd).toMinutes();
-            this.totalBreakMinutes += (int) breakMinutes;
+            long breakMinutes = Duration.between(breakStart, breakEnd).toMinutes();
+            this.totalBreakMinutes = (totalBreakMinutes != null ? totalBreakMinutes : 0) + (int) breakMinutes;
         }
+        this.breakStart = null;
+        this.breakEnd = null;
         this.status = ShiftStatus.CHECKED_IN;
+        bumpActivity();
+    }
+    
+    public void suspend() {
+        bumpActivity();
+        this.suspendedAt = LocalDateTime.now();
+        this.status = ShiftStatus.SUSPENDED;
+    }
+    
+    public void resumeFromSuspend() {
+        if (suspendedAt != null) {
+            long minutes = Duration.between(suspendedAt, LocalDateTime.now()).toMinutes();
+            this.totalSuspendMinutes = (totalSuspendMinutes != null ? totalSuspendMinutes : 0) + (int) minutes;
+        }
+        this.suspendedAt = null;
+        this.status = ShiftStatus.CHECKED_IN;
+        bumpActivity();
     }
     
     public boolean isActive() {
         return status == ShiftStatus.CHECKED_IN || status == ShiftStatus.ON_BREAK;
+    }
+    
+    public boolean isSuspended() {
+        return status == ShiftStatus.SUSPENDED;
+    }
+    
+    public void bumpActivity() {
+        this.lastActivityAt = LocalDateTime.now();
     }
 }

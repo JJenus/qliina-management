@@ -35,5 +35,8 @@ public class ShiftDTO {
     private Integer totalWorkMinutes;
     private Integer overtimeMinutes;
     private String status;
+    @JsonProperty("suspendMinutes")
+    private Integer totalSuspendMinutes;
+    private boolean autoClosed;
     private String notes;
 }

@@ -47,6 +47,6 @@ public class TimeEntry extends BaseTenantEntity {
     private UUID shiftId;
     
     public enum EventType {
-        CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END
+        CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END, SUSPEND, RESUME, AUTO_CLOSED
     }
 }

@@ -43,6 +43,11 @@ public class BusinessConfigService {
         c.setMinRedeemablePoints(dto.getMinRedeemablePoints()); c.setAutoArchiveDays(dto.getAutoArchiveDays());
         c.setAllowNegativeInventory(dto.getAllowNegativeInventory());
         c.setRequireQualityCheck(dto.getRequireQualityCheck());
+        if (dto.getIdleTimeoutMinutes() != null) c.setIdleTimeoutMinutes(dto.getIdleTimeoutMinutes());
+        if (dto.getDayCutoffTime() != null) c.setDayCutoffTime(dto.getDayCutoffTime());
+        if (dto.getDefaultShiftHours() != null) c.setDefaultShiftHours(dto.getDefaultShiftHours());
+        if (dto.getHourlyRate() != null) c.setHourlyRate(dto.getHourlyRate());
+        if (dto.getRequireClockInRoles() != null) c.setRequireClockInRoles(dto.getRequireClockInRoles());
         if (dto.getNotificationSettings() != null) {
             BusinessConfig.NotificationSettings s = new BusinessConfig.NotificationSettings();
             s.setEmailNotifications(dto.getNotificationSettings().getEmailNotifications());
@@ -79,6 +84,8 @@ public class BusinessConfigService {
         c.setReceiptPrefix("RCPT"); c.setInvoicePrefix("INV"); c.setOrderPrefix("ORD");
         c.setLoyaltyPointsPerDollar(10); c.setMinRedeemablePoints(100);
         c.setAutoArchiveDays(90); c.setAllowNegativeInventory(false); c.setRequireQualityCheck(true);
+        c.setIdleTimeoutMinutes(120); c.setDayCutoffTime("00:00"); c.setDefaultShiftHours(8);
+        c.setHourlyRate(BigDecimal.valueOf(15.0)); c.setRequireClockInRoles("");
         BusinessConfig.NotificationSettings s = new BusinessConfig.NotificationSettings();
         s.setEmailNotifications(true); s.setSmsNotifications(false); s.setWhatsappNotifications(false);
         s.setOrderConfirmation(true); s.setOrderReady(true); s.setPaymentReceipt(true); s.setReminderBeforeDue(24);
@@ -92,7 +99,10 @@ public class BusinessConfigService {
                 .receiptPrefix(c.getReceiptPrefix()).invoicePrefix(c.getInvoicePrefix()).orderPrefix(c.getOrderPrefix())
                 .loyaltyPointsPerDollar(c.getLoyaltyPointsPerDollar()).minRedeemablePoints(c.getMinRedeemablePoints())
                 .autoArchiveDays(c.getAutoArchiveDays()).allowNegativeInventory(c.getAllowNegativeInventory())
-                .requireQualityCheck(c.getRequireQualityCheck());
+                .requireQualityCheck(c.getRequireQualityCheck())
+                .idleTimeoutMinutes(c.getIdleTimeoutMinutes()).dayCutoffTime(c.getDayCutoffTime())
+                .defaultShiftHours(c.getDefaultShiftHours()).hourlyRate(c.getHourlyRate())
+                .requireClockInRoles(c.getRequireClockInRoles());
         if (c.getNotificationSettings() != null) {
             b.notificationSettings(BusinessConfigDTO.NotificationSettingsDTO.builder()
                     .emailNotifications(c.getNotificationSettings().getEmailNotifications())

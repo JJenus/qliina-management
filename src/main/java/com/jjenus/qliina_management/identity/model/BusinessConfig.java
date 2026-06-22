@@ -72,6 +72,22 @@ public class BusinessConfig extends BaseEntity {
     @Column(name = "require_quality_check")
     private Boolean requireQualityCheck = true;
 
+    @Column(name = "idle_timeout_minutes")
+    private Integer idleTimeoutMinutes = 120;
+
+    @Column(name = "day_cutoff_time")
+    private String dayCutoffTime = "00:00";
+
+    @Column(name = "default_shift_hours")
+    private Integer defaultShiftHours = 8;
+
+    @Column(name = "hourly_rate", precision = 8, scale = 2)
+    private BigDecimal hourlyRate = BigDecimal.valueOf(15.0);
+
+    /** Comma-separated role names that require clock-in. Empty = default roles only. */
+    @Column(name = "require_clock_in_roles", length = 500)
+    private String requireClockInRoles = "";
+
     @Embedded
     private NotificationSettings notificationSettings;
 

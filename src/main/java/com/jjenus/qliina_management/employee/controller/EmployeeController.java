@@ -173,8 +173,51 @@ public class EmployeeController {
             @Parameter(hidden = true)
             @AuthenticationPrincipal UserDetails userDetails) {
         UUID employeeId = SecurityContextUtil.requireUserId();
-        // This method would need to be added to the service
         return ResponseEntity.ok(employeeService.getCurrentShift(employeeId));
+    }
+    
+    @Operation(
+        summary = "Suspend shift",
+        description = "Temporarily suspend active shift (sleep mode). Auto-ends break first if on break."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Shift suspended"),
+        @ApiResponse(responseCode = "400", description = "No active shift found"),
+        @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @PostMapping("/suspend")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.clock')")
+    public ResponseEntity<TimeEntryDTO> suspendShift(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+            
+            @Parameter(hidden = true)
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID employeeId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(employeeService.suspendShift(businessId, employeeId));
+    }
+    
+    @Operation(
+        summary = "Resume shift",
+        description = "Resume a suspended shift. Requires password verification."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Shift resumed"),
+        @ApiResponse(responseCode = "400", description = "No suspended shift found or incorrect password"),
+        @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @PostMapping("/resume")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.clock')")
+    public ResponseEntity<TimeEntryDTO> resumeShift(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+            
+            @Parameter(hidden = true)
+            @AuthenticationPrincipal UserDetails userDetails,
+            
+            @Valid @RequestBody ResumeRequest request) {
+        UUID employeeId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(employeeService.resumeShift(businessId, employeeId, request));
     }
     
     // ==================== Timesheets ====================

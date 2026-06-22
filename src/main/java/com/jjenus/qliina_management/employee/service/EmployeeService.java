@@ -2,7 +2,9 @@ package com.jjenus.qliina_management.employee.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.identity.model.AuthAccount;
 import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.repository.AuthAccountRepository;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
 import com.jjenus.qliina_management.employee.dto.*;
@@ -15,10 +17,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.jjenus.qliina_management.business.model.Shop;
+import com.jjenus.qliina_management.identity.service.BusinessConfigService;
 import org.springframework.data.domain.PageImpl;
 import java.util.Objects;
 
@@ -47,6 +51,9 @@ public class EmployeeService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final QualityCheckRepository qualityCheckRepository;
+    private final AuthAccountRepository authAccountRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final BusinessConfigService configService;
     
     // ==================== Shift Management ====================
     
@@ -93,7 +100,16 @@ public class EmployeeService {
             shift.setShopId(request.getShopId());
             shift.setDate(today);
             shift.setScheduledStart(now);
-            shift.setScheduledEnd(now.plusHours(8)); // Default 8-hour shift
+            int defaultHours = 8;
+            try {
+                var config = configService.getConfig(businessId);
+                if (config.getDefaultShiftHours() != null && config.getDefaultShiftHours() > 0) {
+                    defaultHours = config.getDefaultShiftHours();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to read defaultShiftHours for business {}", businessId);
+            }
+            shift.setScheduledEnd(now.plusHours(defaultHours));
             shift.setActualStart(now);
             shift.setStatus(EmployeeShift.ShiftStatus.CHECKED_IN);
         }
@@ -123,7 +139,12 @@ public class EmployeeService {
             throw new BusinessException("Unauthorized to clock out this shift", "UNAUTHORIZED");
         }
         
+        if (shift.isSuspended()) {
+            throw new BusinessException("Cannot end a suspended shift. Resume first or ask a manager.", "SHIFT_SUSPENDED");
+        }
+        
         LocalDateTime now = LocalDateTime.now();
+        shift.bumpActivity();
         shift.setActualEnd(now);
         shift.setStatus(EmployeeShift.ShiftStatus.CHECKED_OUT);
         shift.calculateWorkMinutes();
@@ -173,6 +194,49 @@ public class EmployeeService {
         return mapToTimeEntryDTO(entry);
     }
     
+    @Transactional
+    public TimeEntryDTO suspendShift(UUID businessId, UUID employeeId) {
+        EmployeeShift shift = shiftRepository.findActiveShift(employeeId)
+            .orElseThrow(() -> new BusinessException("No active shift found", "NO_ACTIVE_SHIFT"));
+
+        if (shift.getStatus() == EmployeeShift.ShiftStatus.ON_BREAK) {
+            shift.endBreak();
+        }
+
+        shift.suspend();
+        shift = shiftRepository.save(shift);
+
+        TimeEntry entry = createTimeEntry(businessId, employeeId, shift.getShopId(),
+            TimeEntry.EventType.SUSPEND, shift.getId(), null, null);
+
+        return mapToTimeEntryDTO(entry);
+    }
+
+    @Transactional
+    public TimeEntryDTO resumeShift(UUID businessId, UUID employeeId, ResumeRequest request) {
+        EmployeeShift shift = shiftRepository.findSuspendedShift(employeeId)
+            .orElseThrow(() -> new BusinessException("No suspended shift found", "NO_SUSPENDED_SHIFT"));
+
+        if (!shift.getEmployeeId().equals(employeeId)) {
+            throw new BusinessException("Unauthorized to resume this shift", "UNAUTHORIZED");
+        }
+
+        AuthAccount auth = authAccountRepository.findByUserId(employeeId)
+            .orElseThrow(() -> new BusinessException("Auth account not found", "AUTH_NOT_FOUND"));
+
+        if (!passwordEncoder.matches(request.getPassword(), auth.getPasswordHash())) {
+            throw new BusinessException("Incorrect password", "INVALID_PASSWORD");
+        }
+
+        shift.resumeFromSuspend();
+        shift = shiftRepository.save(shift);
+
+        TimeEntry entry = createTimeEntry(businessId, employeeId, shift.getShopId(),
+            TimeEntry.EventType.RESUME, shift.getId(), null, null);
+
+        return mapToTimeEntryDTO(entry);
+    }
+
     @Transactional(readOnly = true)
     public TimesheetDTO getTimesheet(UUID employeeId, LocalDate startDate, LocalDate endDate) {
         User employee = userRepository.findById(employeeId)
@@ -201,8 +265,16 @@ public class EmployeeService {
             .mapToInt(EmployeeShift::getOvertimeMinutes)
             .sum();
         
-        // Calculate pay (example rates)
+        // Calculate pay from business config
         double hourlyRate = 15.0;
+        try {
+            var config = configService.getConfig(employee.getBusinessId());
+            if (config.getHourlyRate() != null && config.getHourlyRate().compareTo(java.math.BigDecimal.ZERO) > 0) {
+                hourlyRate = config.getHourlyRate().doubleValue();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read hourlyRate for business {}", employee.getBusinessId());
+        }
         double overtimeRate = hourlyRate * 1.5;
         
         BigDecimal regularPay = BigDecimal.valueOf(totalWorkedMinutes - totalOvertimeMinutes)
@@ -650,9 +722,10 @@ public class EmployeeService {
  */
 @Transactional(readOnly = true)
 public ShiftDTO getCurrentShift(UUID employeeId) {
-    EmployeeShift shift = shiftRepository.findActiveShift(employeeId)
+    return shiftRepository.findActiveShift(employeeId)
+        .or(() -> shiftRepository.findSuspendedShift(employeeId))
+        .map(this::mapToShiftDTO)
         .orElseThrow(() -> new BusinessException("No active shift found", "NO_ACTIVE_SHIFT"));
-    return mapToShiftDTO(shift);
 }
 
 /**
@@ -754,7 +827,12 @@ public EmployeeDetailDTO getEmployee(UUID employeeId) {
     User user = userRepository.findById(employeeId)
         .orElseThrow(() -> new BusinessException("Employee not found", "EMPLOYEE_NOT_FOUND"));
     
-    Optional<EmployeeShift> currentShift = shiftRepository.findActiveShift(employeeId);
+    Optional<EmployeeShift> activeShift = shiftRepository.findActiveShift(employeeId);
+    Optional<EmployeeShift> suspendedShift = shiftRepository.findSuspendedShift(employeeId);
+    EmployeeShift displayShift = activeShift.orElse(suspendedShift.orElse(null));
+    boolean onShift = activeShift.isPresent();
+    boolean isSuspended = suspendedShift.isPresent();
+    
     String shopName = null;
     if (user.getPrimaryShopId() != null) {
         shopName = shopRepository.findById(user.getPrimaryShopId())
@@ -777,8 +855,8 @@ public EmployeeDetailDTO getEmployee(UUID employeeId) {
         .shopId(user.getPrimaryShopId())
         .shopName(shopName)
         .employmentStatus(user.getEnabled() ? "ACTIVE" : "INACTIVE")
-        .lastClockIn(currentShift.map(EmployeeShift::getActualStart).orElse(null))
-        .isClockedIn(currentShift.isPresent())
+        .lastClockIn(displayShift != null ? displayShift.getActualStart() : null)
+        .isClockedIn(onShift || isSuspended)
         .build();
 }
 
@@ -963,6 +1041,8 @@ private double calculatePerformanceScore(EmployeePerformanceDTO perf) {
             .totalBreakMinutes(shift.getTotalBreakMinutes())
             .totalWorkMinutes(shift.getTotalWorkMinutes())
             .overtimeMinutes(shift.getOvertimeMinutes())
+            .totalSuspendMinutes(shift.getTotalSuspendMinutes())
+            .autoClosed(shift.isAutoClosed())
             .status(shift.getStatus() != null ? shift.getStatus().toString() : null)
             .notes(shift.getNotes())
             .build();

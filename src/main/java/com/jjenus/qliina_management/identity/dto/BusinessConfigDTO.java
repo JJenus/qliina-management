@@ -28,6 +28,11 @@ public class BusinessConfigDTO {
     private Integer    autoArchiveDays;
     private Boolean    allowNegativeInventory;
     private Boolean    requireQualityCheck;
+    private Integer    idleTimeoutMinutes;
+    private String     dayCutoffTime;
+    private Integer    defaultShiftHours;
+    private BigDecimal hourlyRate;
+    private String     requireClockInRoles;
     private NotificationSettingsDTO notificationSettings;
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
