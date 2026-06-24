@@ -79,7 +79,7 @@ public class EmployeeShift extends BaseTenantEntity {
     private Integer totalSuspendMinutes = 0;
     
     @Column(name = "auto_closed")
-    private boolean autoClosed = false;
+    private Boolean autoClosed = false;
     
     @Column(name = "last_activity_at")
     private LocalDateTime lastActivityAt;

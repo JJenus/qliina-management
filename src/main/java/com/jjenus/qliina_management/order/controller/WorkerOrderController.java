@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -31,6 +32,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/worker/orders")
 @RequiredArgsConstructor
+@Validated
 public class WorkerOrderController {
 
     private final WorkerOrderService workerOrderService;
@@ -57,8 +59,8 @@ public class WorkerOrderController {
             @Pattern(
                 regexp = "^[A-Za-z0-9-]+$",
                 message = "Invalid item ID format"
-            ) 
-            String itemId) {
+            )
+            @PathVariable String itemId) {
         
         UUID workerId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(workerOrderService.lookupItem(businessId, workerId, itemId));

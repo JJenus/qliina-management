@@ -113,7 +113,7 @@ public class Order extends BaseTenantEntity {
     public enum OrderStatus {
         DRAFT, RECEIVED, WASHING, WASHED, IRONING, IRONED, 
         QUALITY_CHECK, READY_FOR_PICKUP, OUT_FOR_DELIVERY, 
-        COMPLETED, RETURNED, ARCHIVED
+        COMPLETED, RETURNED, CANCELLED, ARCHIVED
     }
     
     public enum Priority {

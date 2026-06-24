@@ -16,6 +16,7 @@ import com.jjenus.qliina_management.order.dto.ReturnOrderRequest;
 import com.jjenus.qliina_management.order.model.*;
 import com.jjenus.qliina_management.order.repository.OrderItemUnitRepository;
 import com.jjenus.qliina_management.order.repository.OrderItemRepository;
+import com.jjenus.qliina_management.order.repository.ItemWorkerInteractionRepository;
 import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
 import com.jjenus.qliina_management.order.repository.OrderSpecifications;
@@ -64,7 +65,8 @@ public class OrderService {
     private final PlanLimitService planLimitService;
     private final ServiceTypeRepository serviceTypeRepository;
     private final GarmentTypeRepository garmentTypeRepository;
-    
+    private final ItemWorkerInteractionRepository interactionRepository;
+
     private UUID getCurrentUserId() {
         return SecurityContextUtil.getCurrentUserId().orElse(null);
     }
@@ -75,7 +77,26 @@ public class OrderService {
             .map(u -> u.getFirstName() + " " + u.getLastName())
             .orElse("User " + userId.toString().substring(0, 8));
     }
-    
+
+    private void recordItemInteraction(UUID itemId, UUID userId, String accessMethod) {
+        if (userId == null) return;
+        var existing = interactionRepository.findByWorkerIdAndItemId(userId, itemId);
+        if (existing.isPresent()) {
+            ItemWorkerInteraction iwi = existing.get();
+            iwi.recordInteraction();
+            interactionRepository.save(iwi);
+        } else {
+            ItemWorkerInteraction iwi = new ItemWorkerInteraction();
+            iwi.setWorkerId(userId);
+            iwi.setItemId(itemId);
+            iwi.setFirstInteraction(LocalDateTime.now());
+            iwi.setLastInteraction(LocalDateTime.now());
+            iwi.setInteractionCount(1);
+            iwi.setFirstAccessMethod(accessMethod);
+            interactionRepository.save(iwi);
+        }
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryDTO> listOrders(UUID businessId, OrderFilter filter, Pageable pageable) {
         var specification = OrderSpecifications.withFilter(businessId, filter);
@@ -341,7 +362,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             throw new BusinessException("Cannot cancel completed order", "ORDER_ALREADY_COMPLETED");
         }
         
-        order.setStatus(Order.OrderStatus.ARCHIVED);
+        order.setStatus(Order.OrderStatus.CANCELLED);
         
         OrderTimeline timeline = new OrderTimeline();
         timeline.setOrder(order);
@@ -425,6 +446,9 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
                         "Status cascaded from order (%s → %s) by %s",
                         previousItemStatus, mappedItemStatus, userName));
                     item.getStatusHistory().add(itemHistory);
+
+                    // Record interaction attribution (who did it)
+                    recordItemInteraction(item.getId(), currentUserId, "ORDER_CASCADE");
                 }
             }
         }
@@ -475,6 +499,13 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         
         OrderItem.ItemStatus previousStatus = item.getStatus();
         OrderItem.ItemStatus newStatus = OrderItem.ItemStatus.valueOf(request.getStatus());
+
+        // Validate forward-only progression (same as cascade logic)
+        if (!shouldUpdateItemStatus(previousStatus, newStatus)) {
+            throw new BusinessException(
+                String.format("Invalid item status transition from %s to %s. Items can only move forward.", previousStatus, newStatus),
+                "INVALID_ITEM_STATUS_TRANSITION");
+        }
         
         item.setStatus(newStatus);
         
@@ -485,6 +516,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         history.setUpdatedBy(getCurrentUserId());
         history.setNotes(request.getNotes());
         item.getStatusHistory().add(history);
+        recordItemInteraction(item.getId(), getCurrentUserId(), "ITEM_STATUS_UPDATE");
         
         orderRepository.save(order);
         
@@ -596,6 +628,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             itemHistory.setUpdatedBy(currentUserId);
             itemHistory.setNotes("Customer return: " + request.getReason());
             item.getStatusHistory().add(itemHistory);
+            recordItemInteraction(item.getId(), currentUserId, "CUSTOMER_RETURN");
         }
 
         // Add customer-visible note with the return reason
@@ -812,17 +845,18 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
 
     private void validateStatusTransition(Order.OrderStatus from, Order.OrderStatus to) {
         // Define allowed transitions
-        Map<Order.OrderStatus, List<Order.OrderStatus>> allowedTransitions = Map.of(
-            Order.OrderStatus.RECEIVED, List.of(Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.WASHING, List.of(Order.OrderStatus.WASHED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.WASHED, List.of(Order.OrderStatus.IRONING, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.IRONING, List.of(Order.OrderStatus.IRONED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.IRONED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.QUALITY_CHECK, List.of(Order.OrderStatus.READY_FOR_PICKUP, Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.READY_FOR_PICKUP, List.of(Order.OrderStatus.OUT_FOR_DELIVERY, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.OUT_FOR_DELIVERY, List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.COMPLETED, List.of(Order.OrderStatus.RETURNED, Order.OrderStatus.ARCHIVED),
-            Order.OrderStatus.RETURNED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)
+        Map<Order.OrderStatus, List<Order.OrderStatus>> allowedTransitions = Map.ofEntries(
+            Map.entry(Order.OrderStatus.DRAFT, List.of(Order.OrderStatus.RECEIVED)),
+            Map.entry(Order.OrderStatus.RECEIVED, List.of(Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.WASHING, List.of(Order.OrderStatus.WASHED, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.WASHED, List.of(Order.OrderStatus.IRONING, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.IRONING, List.of(Order.OrderStatus.IRONED, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.IRONED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.QUALITY_CHECK, List.of(Order.OrderStatus.READY_FOR_PICKUP, Order.OrderStatus.WASHING, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.READY_FOR_PICKUP, List.of(Order.OrderStatus.OUT_FOR_DELIVERY, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.OUT_FOR_DELIVERY, List.of(Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.COMPLETED, List.of(Order.OrderStatus.RETURNED, Order.OrderStatus.ARCHIVED)),
+            Map.entry(Order.OrderStatus.RETURNED, List.of(Order.OrderStatus.QUALITY_CHECK, Order.OrderStatus.COMPLETED, Order.OrderStatus.ARCHIVED))
         );
         
         List<Order.OrderStatus> allowed = allowedTransitions.get(from);
@@ -858,7 +892,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             case READY_FOR_PICKUP -> OrderItem.ItemStatus.COMPLETED;
             // These order statuses don't have item-level equivalents.
             // RETURNED items are individually marked ISSUE_REPORTED by returnOrder().
-            case OUT_FOR_DELIVERY, COMPLETED, RETURNED, ARCHIVED, DRAFT -> null;
+            case OUT_FOR_DELIVERY, COMPLETED, RETURNED, CANCELLED, ARCHIVED, DRAFT -> null;
         };
     }
     

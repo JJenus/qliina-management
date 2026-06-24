@@ -222,7 +222,7 @@ public class WorkerOrderService {
         }
 
         orderItemRepository.save(item);
-        synchronizeOrderStatus(item.getOrder());
+        synchronizeOrderStatus(item.getOrder(), workerId);
 
         return mapToWorkerItemDTO(item, role);
     }
@@ -273,7 +273,7 @@ public class WorkerOrderService {
         item.getStatusHistory().add(history);
 
         orderItemRepository.save(item);
-        synchronizeOrderStatus(item.getOrder());
+        synchronizeOrderStatus(item.getOrder(), workerId);
 
         return mapToWorkerItemDTO(item, role);
     }
@@ -316,9 +316,11 @@ public class WorkerOrderService {
      * After an item is IRONED and passes QC, it becomes COMPLETED.
      * When ALL items in an order are COMPLETED, the order becomes READY_FOR_PICKUP.
      */
-    private void synchronizeOrderStatus(Order order) {
+    private void synchronizeOrderStatus(Order order, UUID workerId) {
         Order refreshedOrder = orderRepository.findById(order.getId())
                 .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        String workerName = getUserName(workerId);
+        LocalDateTime now = LocalDateTime.now();
 
         List<OrderItem> items = refreshedOrder.getItems();
         if (items.isEmpty()) return;
@@ -330,7 +332,7 @@ public class WorkerOrderService {
         if (allCompleted && refreshedOrder.getStatus() != Order.OrderStatus.READY_FOR_PICKUP) {
             Order.OrderStatus previousStatus = refreshedOrder.getStatus();
             refreshedOrder.setStatus(Order.OrderStatus.READY_FOR_PICKUP);
-            refreshedOrder.setActualReadyAt(LocalDateTime.now());
+            refreshedOrder.setActualReadyAt(now);
 
             OrderTimeline timeline = new OrderTimeline();
             timeline.setOrder(refreshedOrder);
@@ -338,7 +340,9 @@ public class WorkerOrderService {
             timeline.setStatus(Order.OrderStatus.READY_FOR_PICKUP.toString());
             timeline.setDescription(
                 String.format("All items completed. Order ready for pickup (was: %s)", previousStatus));
-            timeline.setTimestamp(LocalDateTime.now());
+            timeline.setTimestamp(now);
+            timeline.setUserId(workerId);
+            timeline.setUserName(workerName);
             refreshedOrder.getTimeline().add(timeline);
 
             orderRepository.save(refreshedOrder);
@@ -365,7 +369,9 @@ public class WorkerOrderService {
                 timeline.setDescription(String.format(
                     "All items moved to '%s' — order status updated from '%s'",
                     unifiedStatus, previousOrderStatus));
-                timeline.setTimestamp(LocalDateTime.now());
+                timeline.setTimestamp(now);
+                timeline.setUserId(workerId);
+                timeline.setUserName(workerName);
                 refreshedOrder.getTimeline().add(timeline);
 
                 orderRepository.save(refreshedOrder);
@@ -481,6 +487,13 @@ public class WorkerOrderService {
                 .findFirst()
                 .map(ur -> ur.getRole().getName())
                 .orElseThrow(() -> new BusinessException("No role assigned", "NO_ROLE"));
+    }
+
+    private String getUserName(UUID userId) {
+        if (userId == null) return "System";
+        return userRepository.findById(userId)
+            .map(u -> u.getFirstName() + " " + u.getLastName())
+            .orElse("User " + userId.toString().substring(0, 8));
     }
 
     private WorkerItemDTO mapToWorkerItemDTO(OrderItem item, String currentRole) {

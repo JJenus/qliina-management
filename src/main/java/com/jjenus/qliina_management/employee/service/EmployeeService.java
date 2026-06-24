@@ -720,7 +720,7 @@ public class EmployeeService {
  * Get current active shift for an employee
  * Uses: EmployeeShift entity with fields: employeeId, status, actualStart, actualEnd, etc.
  */
-@Transactional(readOnly = true)
+@Transactional
 public ShiftDTO getCurrentShift(UUID employeeId) {
     return shiftRepository.findActiveShift(employeeId)
         .or(() -> shiftRepository.findSuspendedShift(employeeId))
@@ -1042,7 +1042,7 @@ private double calculatePerformanceScore(EmployeePerformanceDTO perf) {
             .totalWorkMinutes(shift.getTotalWorkMinutes())
             .overtimeMinutes(shift.getOvertimeMinutes())
             .totalSuspendMinutes(shift.getTotalSuspendMinutes())
-            .autoClosed(shift.isAutoClosed())
+            .autoClosed(Boolean.TRUE.equals(shift.getAutoClosed()))
             .status(shift.getStatus() != null ? shift.getStatus().toString() : null)
             .notes(shift.getNotes())
             .build();
