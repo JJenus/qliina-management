@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.expense.controller;
 
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.expense.dto.CreateExpenseRequest;
 import com.jjenus.qliina_management.expense.dto.ExpenseDTO;
 import com.jjenus.qliina_management.expense.dto.UpdateExpenseRequest;
@@ -23,6 +24,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/expenses")
 @RequiredArgsConstructor
+@RequireClockIn
 public class ExpenseController {
 
     private final ExpenseService expenseService;

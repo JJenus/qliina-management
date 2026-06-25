@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.order.controller;
 
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.order.dto.*;
 import com.jjenus.qliina_management.order.service.OrderService;
@@ -30,6 +31,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/orders")
 @RequiredArgsConstructor
+@RequireClockIn
 public class OrderController {
     
     private final OrderService orderService;

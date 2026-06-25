@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.quality.controller;
 
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.common.ErrorResponse;
 import com.jjenus.qliina_management.quality.dto.*;
@@ -32,6 +33,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/quality")
 @RequiredArgsConstructor
+@RequireClockIn
 public class QualityController {
     
     private final QualityService qualityService;

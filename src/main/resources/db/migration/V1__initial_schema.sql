@@ -1,0 +1,15 @@
+-- V1__initial_schema.sql
+--
+-- This is the baseline migration for the existing qliina database.
+-- All ~75 tables are managed by JPA entity classes with
+-- spring.jpa.hibernate.ddl-auto=validate.
+--
+-- Flyway baselines the existing schema at version 0 via
+-- spring.flyway.baseline-on-migrate=true + baseline-version=0.
+-- This V1 is a no-op marker; the actual DDL lives in the entities.
+--
+-- For greenfield deployments, either:
+--   1. Run once with ddl-auto=update + flyway.enabled=false,
+--      then enable Flyway and re-baseline.
+--   2. Replace this file with a full pg_dump or Hibernate-generated DDL.
+SELECT 1;

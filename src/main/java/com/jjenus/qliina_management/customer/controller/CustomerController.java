@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.customer.controller;
 
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.common.ErrorResponse;
 import com.jjenus.qliina_management.customer.dto.*;
@@ -30,6 +31,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/customers")
 @RequiredArgsConstructor
+@RequireClockIn
 public class CustomerController {
     
     private final CustomerService customerService;

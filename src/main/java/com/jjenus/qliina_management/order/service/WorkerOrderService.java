@@ -5,9 +5,9 @@ import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.common.util.IdGenerator;
 import com.jjenus.qliina_management.employee.repository.EmployeeShiftRepository;
+import com.jjenus.qliina_management.employee.service.ShiftGateService;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
-import com.jjenus.qliina_management.identity.service.BusinessConfigService;
 import com.jjenus.qliina_management.order.dto.WorkerItemDTO;
 import com.jjenus.qliina_management.order.model.*;
 import com.jjenus.qliina_management.order.repository.ItemWorkerInteractionRepository;
@@ -48,7 +48,7 @@ public class WorkerOrderService {
     private final UserRepository userRepository;
     private final ItemWorkerInteractionRepository interactionRepository;
     private final EmployeeShiftRepository shiftRepository;
-    private final BusinessConfigService configService;
+    private final ShiftGateService shiftGateService;
 
     /**
      * Role-based item status transitions.
@@ -80,39 +80,10 @@ public class WorkerOrderService {
     /** Roles that can use item-level operations */
     private static final Set<String> ITEM_WORKER_ROLES = Set.of("WASHER", "IRONER");
 
-    /** Default roles that require clock-in to work */
-    private static final Set<String> DEFAULT_CLOCK_REQUIRED_ROLES = Set.of("WASHER", "IRONER", "DELIVERY", "FRONT_DESK");
-
-    private boolean isClockRequired(String role, UUID businessId) {
-        if (DEFAULT_CLOCK_REQUIRED_ROLES.contains(role)) return true;
-        if (businessId == null) return false;
-        try {
-            var config = configService.getConfig(businessId);
-            if (config.getRequireClockInRoles() != null && !config.getRequireClockInRoles().isEmpty()) {
-                for (String r : config.getRequireClockInRoles().split(",")) {
-                    if (r.trim().equalsIgnoreCase(role)) return true;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to read requireClockInRoles for business {}", businessId);
-        }
-        return false;
-    }
-
-    private void requireClockedIn(UUID workerId, String role, UUID businessId) {
-        if (isClockRequired(role, businessId)) {
-            shiftRepository.findActiveShift(workerId)
-                .orElseThrow(() -> new BusinessException(
-                    "You must clock in before you can start working.",
-                    "NOT_CLOCKED_IN"));
-        }
-    }
-
     @Transactional(readOnly = true)
     public WorkerItemDTO lookupItem(UUID businessId, UUID workerId, String itemId) {
-        User worker = getUser(workerId);
-        String role = getPrimaryRole(worker);
-        requireClockedIn(workerId, role, businessId);
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
 
         OrderItem item = findItem(businessId, itemId);
 
@@ -129,13 +100,12 @@ public class WorkerOrderService {
     public PageResponse<WorkerItemDTO> getWorkQueue(
             UUID businessId, UUID workerId, String filter, Pageable pageable) {
 
-        User worker = getUser(workerId);
-        String role = getPrimaryRole(worker);
-        requireClockedIn(workerId, role, businessId);
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
 
         // Delivery workers use order-level queries, not item-level
         if ("DELIVERY".equals(role)) {
-            return getDeliveryQueue(businessId, worker.getPrimaryShopId(), pageable);
+            return getDeliveryQueue(businessId, getUser(workerId).getPrimaryShopId(), pageable);
         }
 
         List<OrderItem.ItemStatus> relevantStatuses = ROLE_INCOMING.getOrDefault(role, List.of());
@@ -144,7 +114,7 @@ public class WorkerOrderService {
         }
 
         Page<OrderItem> items = orderItemRepository.findByBusinessIdAndStatusIn(
-                businessId, worker.getPrimaryShopId(), relevantStatuses, pageable);
+                businessId, getUser(workerId).getPrimaryShopId(), relevantStatuses, pageable);
 
         List<WorkerItemDTO> dtos = items.getContent().stream()
                 .map(item -> mapToWorkerItemDTO(item, role))
@@ -157,9 +127,8 @@ public class WorkerOrderService {
     public PageResponse<WorkerItemDTO> getWorkHistory(
             UUID businessId, UUID workerId, Pageable pageable) {
 
-        User worker = getUser(workerId);
-        String role = getPrimaryRole(worker);
-        requireClockedIn(workerId, role, businessId);
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
 
         var interactions = interactionRepository.findByWorkerIdAndBusinessId(workerId, businessId, pageable);
 
@@ -177,9 +146,8 @@ public class WorkerOrderService {
 
     @Transactional
     public WorkerItemDTO startWorkOnItem(UUID businessId, UUID workerId, UUID itemId) {
-        User worker = getUser(workerId);
-        String role = getPrimaryRole(worker);
-        requireClockedIn(workerId, role, businessId);
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
 
         OrderItem item = orderItemRepository.findById(itemId)
                 .orElseThrow(() -> new BusinessException("Item not found", "ITEM_NOT_FOUND"));
@@ -231,9 +199,8 @@ public class WorkerOrderService {
     public WorkerItemDTO completeWorkOnItem(
             UUID businessId, UUID workerId, UUID itemId, String notes) {
 
-        User worker = getUser(workerId);
-        String role = getPrimaryRole(worker);
-        requireClockedIn(workerId, role, businessId);
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
 
         OrderItem item = orderItemRepository.findById(itemId)
                 .orElseThrow(() -> new BusinessException("Item not found", "ITEM_NOT_FOUND"));
@@ -480,13 +447,6 @@ public class WorkerOrderService {
     private User getUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-    }
-
-    private String getPrimaryRole(User user) {
-        return user.getRoles().stream()
-                .findFirst()
-                .map(ur -> ur.getRole().getName())
-                .orElseThrow(() -> new BusinessException("No role assigned", "NO_ROLE"));
     }
 
     private String getUserName(UUID userId) {
