@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.employee.service;
 
+import com.jjenus.qliina_management.common.TimezoneContext;
 import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import com.jjenus.qliina_management.employee.model.TimeEntry;
@@ -13,8 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -33,6 +36,9 @@ public class IdleDetectionService {
 
         for (EmployeeShift shift : candidates) {
             try {
+                ZoneId zone = resolveZone(shift.getBusinessId());
+                TimezoneContext.set(zone);
+
                 int timeoutMinutes = 120;
                 if (shift.getBusinessId() != null) {
                     var config = configService.getConfig(shift.getBusinessId());
@@ -42,7 +48,8 @@ public class IdleDetectionService {
                 }
 
                 if (shift.getLastActivityAt() == null
-                    || shift.getLastActivityAt().isAfter(LocalDateTime.now().minusMinutes(timeoutMinutes))) {
+                    || shift.getLastActivityAt().isAfter(TimezoneContext.now().minusMinutes(timeoutMinutes))) {
+                    TimezoneContext.clear();
                     continue;
                 }
 
@@ -58,7 +65,7 @@ public class IdleDetectionService {
                 entry.setEmployeeId(shift.getEmployeeId());
                 entry.setShopId(shift.getShopId());
                 entry.setEventType(TimeEntry.EventType.SUSPEND);
-                entry.setTimestamp(LocalDateTime.now());
+                entry.setTimestamp(TimezoneContext.now());
                 entry.setShiftId(shift.getId());
                 entry.setNotes("Auto-suspended due to inactivity");
                 timeEntryRepository.save(entry);
@@ -74,7 +81,20 @@ public class IdleDetectionService {
                     shift.getId(), shift.getEmployeeId(), timeoutMinutes);
             } catch (Exception e) {
                 log.error("Failed to auto-suspend shift {}: {}", shift.getId(), e.getMessage());
+            } finally {
+                TimezoneContext.clear();
             }
+        }
+    }
+
+    private ZoneId resolveZone(UUID businessId) {
+        if (businessId == null) return ZoneId.of("Africa/Lagos");
+        try {
+            var config = configService.getConfig(businessId);
+            String tz = config.getTimezone();
+            return tz != null ? ZoneId.of(tz) : ZoneId.of("Africa/Lagos");
+        } catch (Exception e) {
+            return ZoneId.of("Africa/Lagos");
         }
     }
 }

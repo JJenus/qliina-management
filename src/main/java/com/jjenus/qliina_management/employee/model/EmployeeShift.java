@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import com.jjenus.qliina_management.common.TimezoneContext;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -103,12 +104,12 @@ public class EmployeeShift extends BaseTenantEntity {
     }
     
     public void startBreak() {
-        this.breakStart = LocalDateTime.now();
+        this.breakStart = TimezoneContext.now();
         this.status = ShiftStatus.ON_BREAK;
     }
     
     public void endBreak() {
-        this.breakEnd = LocalDateTime.now();
+        this.breakEnd = TimezoneContext.now();
         if (breakStart != null) {
             long breakMinutes = Duration.between(breakStart, breakEnd).toMinutes();
             this.totalBreakMinutes = (totalBreakMinutes != null ? totalBreakMinutes : 0) + (int) breakMinutes;
@@ -121,13 +122,13 @@ public class EmployeeShift extends BaseTenantEntity {
     
     public void suspend() {
         bumpActivity();
-        this.suspendedAt = LocalDateTime.now();
+        this.suspendedAt = TimezoneContext.now();
         this.status = ShiftStatus.SUSPENDED;
     }
     
     public void resumeFromSuspend() {
         if (suspendedAt != null) {
-            long minutes = Duration.between(suspendedAt, LocalDateTime.now()).toMinutes();
+            long minutes = Duration.between(suspendedAt, TimezoneContext.now()).toMinutes();
             this.totalSuspendMinutes = (totalSuspendMinutes != null ? totalSuspendMinutes : 0) + (int) minutes;
         }
         this.suspendedAt = null;
@@ -144,6 +145,6 @@ public class EmployeeShift extends BaseTenantEntity {
     }
     
     public void bumpActivity() {
-        this.lastActivityAt = LocalDateTime.now();
+        this.lastActivityAt = TimezoneContext.now();
     }
 }

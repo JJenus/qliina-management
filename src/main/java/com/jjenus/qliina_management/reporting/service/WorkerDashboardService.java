@@ -192,7 +192,7 @@ public class WorkerDashboardService {
     }
 
     private WorkerDashboardDTO.ShiftInfoDTO buildShiftInfo(UUID workerId) {
-        Optional<EmployeeShift> activeShift = shiftRepository.findActiveShift(workerId);
+        Optional<EmployeeShift> activeShift = shiftRepository.findActiveShiftUnlocked(workerId);
 
         if (activeShift.isEmpty()) {
             return WorkerDashboardDTO.ShiftInfoDTO.builder()

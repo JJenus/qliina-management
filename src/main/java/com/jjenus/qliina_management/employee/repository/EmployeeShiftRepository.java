@@ -35,6 +35,10 @@ Long countActiveEmployees(@Param("shopId") UUID shopId);
            "AND es.status IN ('CHECKED_IN', 'ON_BREAK')")
     Optional<EmployeeShift> findActiveShift(@Param("employeeId") UUID employeeId);
 
+    @Query("SELECT es FROM EmployeeShift es WHERE es.employeeId = :employeeId " +
+           "AND es.status IN ('CHECKED_IN', 'ON_BREAK')")
+    Optional<EmployeeShift> findActiveShiftUnlocked(@Param("employeeId") UUID employeeId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT es FROM EmployeeShift es WHERE es.employeeId = :employeeId " +
            "AND es.status = 'SUSPENDED'")

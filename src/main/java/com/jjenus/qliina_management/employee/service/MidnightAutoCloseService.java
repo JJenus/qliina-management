@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.employee.service;
 
+import com.jjenus.qliina_management.common.TimezoneContext;
 import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import com.jjenus.qliina_management.employee.model.TimeEntry;
@@ -14,8 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -36,10 +39,11 @@ public class MidnightAutoCloseService {
             return;
         }
 
-        LocalTime now = LocalTime.now();
-
         for (EmployeeShift shift : openShifts) {
             try {
+                ZoneId zone = resolveZone(shift.getBusinessId());
+                TimezoneContext.set(zone);
+                LocalTime now = TimezoneContext.now().toLocalTime();
                 LocalTime cutoff = LocalTime.parse("00:00");
                 if (shift.getBusinessId() != null) {
                     var config = configService.getConfig(shift.getBusinessId());
@@ -54,6 +58,7 @@ public class MidnightAutoCloseService {
                 }
 
                 if (now.isBefore(cutoff)) {
+                    TimezoneContext.clear();
                     continue;
                 }
 
@@ -61,7 +66,7 @@ public class MidnightAutoCloseService {
                     shift.endBreak();
                 }
 
-                LocalDateTime closeTime = LocalDateTime.now();
+                LocalDateTime closeTime = TimezoneContext.now();
                 shift.setActualEnd(closeTime);
                 shift.setStatus(EmployeeShift.ShiftStatus.CHECKED_OUT);
                 shift.setAutoClosed(true);
@@ -88,7 +93,20 @@ public class MidnightAutoCloseService {
                 log.info("Auto-closed shift {} for employee {}", shift.getId(), shift.getEmployeeId());
             } catch (Exception e) {
                 log.error("Failed to auto-close shift {}: {}", shift.getId(), e.getMessage());
+            } finally {
+                TimezoneContext.clear();
             }
+        }
+    }
+
+    private ZoneId resolveZone(UUID businessId) {
+        if (businessId == null) return ZoneId.of("Africa/Lagos");
+        try {
+            var config = configService.getConfig(businessId);
+            String tz = config.getTimezone();
+            return tz != null ? ZoneId.of(tz) : ZoneId.of("Africa/Lagos");
+        } catch (Exception e) {
+            return ZoneId.of("Africa/Lagos");
         }
     }
 }

@@ -2,6 +2,7 @@ package com.jjenus.qliina_management.employee.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
+import com.jjenus.qliina_management.common.TimezoneContext;
 import com.jjenus.qliina_management.identity.model.AuthAccount;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.AuthAccountRepository;
@@ -81,7 +82,7 @@ public class EmployeeService {
             throw new BusinessException("Employee already has an active shift", "ACTIVE_SHIFT_EXISTS");
         }
         
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = TimezoneContext.now();
         LocalDate today = now.toLocalDate();
         
         // Check if there's a scheduled shift for today
@@ -143,7 +144,7 @@ public class EmployeeService {
             throw new BusinessException("Cannot end a suspended shift. Resume first or ask a manager.", "SHIFT_SUSPENDED");
         }
         
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = TimezoneContext.now();
         shift.bumpActivity();
         shift.setActualEnd(now);
         shift.setStatus(EmployeeShift.ShiftStatus.CHECKED_OUT);
@@ -530,8 +531,8 @@ public class EmployeeService {
         }
         
         return getEmployeeTargets(request.getEmployeeId(), 
-            savedTargets.stream().map(EmployeeTarget::getDate).min(LocalDate::compareTo).orElse(LocalDate.now()),
-            savedTargets.stream().map(EmployeeTarget::getDate).max(LocalDate::compareTo).orElse(LocalDate.now()));
+            savedTargets.stream().map(EmployeeTarget::getDate).min(LocalDate::compareTo).orElse(TimezoneContext.now().toLocalDate()),
+            savedTargets.stream().map(EmployeeTarget::getDate).max(LocalDate::compareTo).orElse(TimezoneContext.now().toLocalDate()));
     }
     
     @Transactional(readOnly = true)
@@ -940,7 +941,7 @@ private double calculatePerformanceScore(EmployeePerformanceDTO perf) {
         entry.setEmployeeId(employeeId);
         entry.setShopId(shopId);
         entry.setEventType(eventType);
-        entry.setTimestamp(LocalDateTime.now());
+        entry.setTimestamp(TimezoneContext.now());
         entry.setShiftId(shiftId);
         
         if (deviceInfo != null) {
@@ -991,7 +992,7 @@ private double calculatePerformanceScore(EmployeePerformanceDTO perf) {
     private void generateShiftsFromSchedule(EmployeeSchedule schedule) {
         if (!schedule.getIsRecurring()) return;
         
-        LocalDate startDate = schedule.getDate() != null ? schedule.getDate() : LocalDate.now();
+        LocalDate startDate = schedule.getDate() != null ? schedule.getDate() : TimezoneContext.now().toLocalDate();
         LocalDate endDate = startDate.plusMonths(1); // Generate for next month
         
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusWeeks(1)) {
