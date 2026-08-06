@@ -128,14 +128,15 @@ public class AuditService {
     }
     
     @Transactional(readOnly = true)
-    public PageResponse<AuditLogDTO> getEntityHistory(String entityType, UUID entityId, Pageable pageable) {
-        Page<AuditLog> page = auditLogRepository.findByEntityTypeAndEntityId(entityType, entityId, pageable);
+    public PageResponse<AuditLogDTO> getEntityHistory(UUID businessId, String entityType, UUID entityId, Pageable pageable) {
+        Page<AuditLog> page = auditLogRepository.findByBusinessIdAndEntityTypeAndEntityId(
+            businessId, entityType, entityId, pageable);
         return PageResponse.from(page.map(this::mapToDTO));
     }
     
     @Transactional(readOnly = true)
-    public PageResponse<AuditLogDTO> getUserActivity(UUID userId, Pageable pageable) {
-        Page<AuditLog> page = auditLogRepository.findByUserId(userId, pageable);
+    public PageResponse<AuditLogDTO> getUserActivity(UUID businessId, UUID userId, Pageable pageable) {
+        Page<AuditLog> page = auditLogRepository.findByBusinessIdAndUserId(businessId, userId, pageable);
         return PageResponse.from(page.map(this::mapToDTO));
     }
     

@@ -21,7 +21,7 @@ public class UserPermission extends BaseEntity {
     @JoinColumn(name = "permission_id", nullable = false)
     private Permission permission;
 
-    @Column(name = "business_id", nullable = false)
+    @Column(name = "business_id", nullable = true)
     private UUID businessId;
 
     @Column(name = "shop_id")

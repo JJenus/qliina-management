@@ -29,6 +29,6 @@ public class LoyaltyTier extends BaseTenantEntity {
     @Column(name = "points_required", nullable = false)
     private Integer pointsRequired;
     
-    @Column(name = "benefits", columnDefinition = "text[]")
+    @Column(name = "benefits", columnDefinition = "text ARRAY")
     private List<String> benefits = new ArrayList<>();
 }

@@ -1,8 +1,10 @@
 package com.jjenus.qliina_management.inventory.dto;
 
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Builder;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -10,6 +12,8 @@ import java.util.UUID;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AdjustStockRequest {
     @NotNull(message = "Shop ID is required")
     private UUID shopId;
@@ -19,6 +23,8 @@ public class AdjustStockRequest {
     
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class StockAdjustment {
         @NotNull(message = "Item ID is required")
         private UUID itemId;

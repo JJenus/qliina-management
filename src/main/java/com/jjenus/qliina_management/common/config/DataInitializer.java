@@ -104,6 +104,8 @@ public class DataInitializer implements CommandLineRunner {
         perm("notification.send",   "Send Notifications",    "Send notifications to users",     "NOTIFICATION", "BUSINESS", false);
         perm("notification.update", "Update Notifications",  "Mark notifications as read",      "NOTIFICATION", "BUSINESS", true);
         perm("notification.manage", "Manage Notifications",  "Manage templates and settings",   "NOTIFICATION", "BUSINESS", false);
+        perm("notification.config.view",   "View Notification Config",  "View notification channel configuration", "NOTIFICATION", "BUSINESS", false);
+        perm("notification.config.manage", "Manage Notification Config","Manage notification channel configuration", "NOTIFICATION", "BUSINESS", false);
 
         // Employee management
         perm("employee.view",   "View Employees",   "View employee details",           "EMPLOYEE", "BUSINESS", true);
@@ -115,12 +117,13 @@ public class DataInitializer implements CommandLineRunner {
         perm("admin.audit",    "View Audit Logs", "View system audit logs",   "ADMIN", "BUSINESS", false);
 
         // Platform roles (cross-tenant access for Qliina staff)
-        perm("platform.businesses.view",   "View All Businesses",       "List and view all businesses",           "PLATFORM_ADMIN", "BUSINESS", false);
-        perm("platform.businesses.manage", "Manage All Businesses",     "Update status and plan of businesses",   "PLATFORM_ADMIN", "BUSINESS", false);
-        perm("platform.plans.manage",      "Manage Subscription Plans", "CRUD subscription plan definitions",     "PLATFORM_ADMIN", "BUSINESS", false);
-        perm("platform.support.view",      "Support View",              "View operational data (masked PII)",     "PLATFORM_ADMIN", "BUSINESS", false);
-        perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "BUSINESS", false);
-        perm("platform.audit.view",        "Platform Audit View",       "Full read-only audit access",            "PLATFORM_ADMIN", "BUSINESS", false);
+        // Scoped GLOBAL (not BUSINESS) so tenant BUSINESS_ADMIN roles never inherit them.
+        perm("platform.businesses.view",   "View All Businesses",       "List and view all businesses",           "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.businesses.manage", "Manage All Businesses",     "Update status and plan of businesses",   "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.plans.manage",      "Manage Subscription Plans", "CRUD subscription plan definitions",     "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.support.view",      "Support View",              "View operational data (masked PII)",     "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.audit.view",        "Platform Audit View",       "Full read-only audit access",            "PLATFORM_ADMIN", "GLOBAL", false);
 
         log.info("Permissions check complete. Total: {}", permissionRepository.count());
     }
@@ -145,8 +148,8 @@ public class DataInitializer implements CommandLineRunner {
         role("SUPER_ADMIN", "Platform super administrator — full access", Role.RoleType.PLATFORM, true, now,
              new HashSet<>(permissionRepository.findAll()));
 
-        // BUSINESS_OWNER - Full business control (all BUSINESS and SHOP scope permissions)
-        role("BUSINESS_OWNER", "Business owner — full business control", Role.RoleType.BUSINESS, true, now,
+        // BUSINESS_ADMIN - Full business control (all BUSINESS and SHOP scope permissions)
+        role("BUSINESS_ADMIN", "Business owner — full business control", Role.RoleType.BUSINESS, true, now,
              new HashSet<>(permissionRepository.findByScopeIn(Arrays.asList(
                      Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))));
 
@@ -286,8 +289,8 @@ public class DataInitializer implements CommandLineRunner {
         syncRole("SUPER_ADMIN",
             new HashSet<>(permissionRepository.findAll()));
 
-        // BUSINESS_OWNER - Full business control (all BUSINESS and SHOP scope permissions)
-        syncRole("BUSINESS_OWNER",
+        // BUSINESS_ADMIN - Full business control (all BUSINESS and SHOP scope permissions)
+        syncRole("BUSINESS_ADMIN",
             new HashSet<>(permissionRepository.findByScopeIn(Arrays.asList(
                 Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))));
 

@@ -20,6 +20,7 @@ import java.util.UUID;
     @Index(name = "idx_user_email", columnList = "email"),
     @Index(name = "idx_user_phone", columnList = "phone")
 })
+@AttributeOverride(name = "businessId", column = @Column(name = "business_id", nullable = true))
 @Getter
 @Setter
 @Builder
@@ -32,7 +33,7 @@ public class User extends BaseTenantEntity {
     @Column(name = "email", unique = true)
     private String email;
 
-    @Column(name = "phone", nullable = false, unique = true)
+    @Column(name = "phone", nullable = true, unique = true)
     private String phone;
 
     @Column(name = "first_name", nullable = false)

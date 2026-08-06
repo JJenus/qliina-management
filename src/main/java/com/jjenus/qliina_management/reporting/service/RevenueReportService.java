@@ -87,7 +87,7 @@ public class RevenueReportService {
         Map<String, PeriodSummary> summaryMap = new LinkedHashMap<>();
         DateTimeFormatter formatter;
         
-        switch (groupBy) {
+        switch (groupBy == null ? "DAY" : groupBy) {
             case "HOUR":
                 formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
                 break;

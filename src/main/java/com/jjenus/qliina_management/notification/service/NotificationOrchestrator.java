@@ -82,13 +82,13 @@ public class NotificationOrchestrator {
     }
     
     @Transactional
-    public NotificationTemplateDTO updateTemplate(UUID templateId, UpdateTemplateRequest request) {
-        return templateService.updateTemplate(templateId, request);
+    public NotificationTemplateDTO updateTemplate(UUID businessId, UUID templateId, UpdateTemplateRequest request) {
+        return templateService.updateTemplate(businessId, templateId, request);
     }
     
     @Transactional
-    public void deleteTemplate(UUID templateId) {
-        templateService.deleteTemplate(templateId);
+    public void deleteTemplate(UUID businessId, UUID templateId) {
+        templateService.deleteTemplate(businessId, templateId);
     }
     
     // ====== Device Operations ======

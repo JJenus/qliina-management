@@ -89,17 +89,23 @@ public class DataSubjectRequestService {
     }
     
     @Transactional(readOnly = true)
-    public DataSubjectRequestDTO getRequest(UUID requestId) {
+    public DataSubjectRequestDTO getRequest(UUID businessId, UUID requestId) {
         DataSubjectRequest request = requestRepository.findById(requestId)
             .orElseThrow(() -> new BusinessException("Request not found", "REQUEST_NOT_FOUND"));
+        if (!businessId.equals(request.getBusinessId())) {
+            throw new BusinessException("Request not found", "REQUEST_NOT_FOUND");
+        }
         return mapToDTO(request);
     }
     
     @Transactional
-    public DataSubjectRequestDTO updateRequest(UUID requestId, UpdateDataSubjectRequest request) {
+    public DataSubjectRequestDTO updateRequest(UUID businessId, UUID requestId, UpdateDataSubjectRequest request) {
         DataSubjectRequest dsr = requestRepository.findById(requestId)
             .orElseThrow(() -> new BusinessException("Request not found", "REQUEST_NOT_FOUND"));
-        
+        if (!businessId.equals(dsr.getBusinessId())) {
+            throw new BusinessException("Request not found", "REQUEST_NOT_FOUND");
+        }
+
         if (request.getStatus() != null) {
             dsr.setStatus(DataSubjectRequest.RequestStatus.valueOf(request.getStatus()));
             
@@ -135,10 +141,13 @@ public class DataSubjectRequestService {
     }
     
     @Transactional
-    public DataSubjectRequestDTO processRequest(UUID requestId) {
+    public DataSubjectRequestDTO processRequest(UUID businessId, UUID requestId) {
         DataSubjectRequest dsr = requestRepository.findById(requestId)
             .orElseThrow(() -> new BusinessException("Request not found", "REQUEST_NOT_FOUND"));
-        
+        if (!businessId.equals(dsr.getBusinessId())) {
+            throw new BusinessException("Request not found", "REQUEST_NOT_FOUND");
+        }
+
         dsr.setStatus(DataSubjectRequest.RequestStatus.IN_PROGRESS);
         
         // Process based on request type

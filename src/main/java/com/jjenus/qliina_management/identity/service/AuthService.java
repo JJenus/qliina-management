@@ -20,7 +20,10 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -51,6 +54,8 @@ public class AuthService {
     private final PasswordEncoder              passwordEncoder;
     /** Used for the business-status check on login and the registration flow. */
     private final BusinessService              businessService;
+    /** Used to persist failed-login counters outside the (rolling-back) login transaction. */
+    private final PlatformTransactionManager   transactionManager;
 
 
     /**
@@ -286,11 +291,17 @@ public class AuthService {
     }
 
     private void handleFailedLogin(String identity) {
-        userRepository.findByIdentity(identity).ifPresent(user -> {
-            AuthAccount a = user.getAuthAccount();
-            a.setFailedAttempts(a.getFailedAttempts() + 1);
-            if (a.getFailedAttempts() >= 5) a.setLockedUntil(LocalDateTime.now().plusMinutes(30));
-            authAccountRepository.save(a);
+        // Run in its own REQUIRES_NEW transaction: the caller's @Transactional login
+        // throws BadCredentialsException, which would roll back (and lose) the counter.
+        TransactionTemplate tt = new TransactionTemplate(transactionManager);
+        tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        tt.executeWithoutResult(status -> {
+            userRepository.findByIdentity(identity).ifPresent(user -> {
+                AuthAccount a = user.getAuthAccount();
+                a.setFailedAttempts(a.getFailedAttempts() + 1);
+                if (a.getFailedAttempts() >= 5) a.setLockedUntil(LocalDateTime.now().plusMinutes(30));
+                authAccountRepository.save(a);
+            });
         });
     }
 

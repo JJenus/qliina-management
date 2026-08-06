@@ -64,10 +64,10 @@ public class ReportExportService {
     private byte[] exportRevenueReport(UUID businessId, ExportReportRequest request) {
         // Parse request parameters
         RevenueReportRequest reportRequest = new RevenueReportRequest();
-        reportRequest.setStartDate((LocalDate) request.getParameters().get("startDate"));
-        reportRequest.setEndDate((LocalDate) request.getParameters().get("endDate"));
-        reportRequest.setShopId((UUID) request.getParameters().get("shopId"));
-        reportRequest.setGroupBy((String) request.getParameters().get("groupBy"));
+        reportRequest.setStartDate(asLocalDate(param(request, "startDate")));
+        reportRequest.setEndDate(asLocalDate(param(request, "endDate")));
+        reportRequest.setShopId(asUUID(param(request, "shopId")));
+        reportRequest.setGroupBy(asString(param(request, "groupBy")));
         
         RevenueReportDTO report = revenueService.generateRevenueReport(businessId, reportRequest);
         
@@ -252,8 +252,8 @@ public class ReportExportService {
     private byte[] exportProfitLossReport(UUID businessId, ExportReportRequest request) {
         // Parse request parameters
         DateRangeRequest dateRequest = new DateRangeRequest();
-        dateRequest.setStartDate((LocalDate) request.getParameters().get("startDate"));
-        dateRequest.setEndDate((LocalDate) request.getParameters().get("endDate"));
+        dateRequest.setStartDate(asLocalDate(param(request, "startDate")));
+        dateRequest.setEndDate(asLocalDate(param(request, "endDate")));
         
         ProfitLossDTO report = financialService.generateProfitLoss(businessId, dateRequest);
         
@@ -328,8 +328,8 @@ public class ReportExportService {
     
     private byte[] exportTaxReport(UUID businessId, ExportReportRequest request) {
         TaxReportRequest taxRequest = new TaxReportRequest();
-        taxRequest.setStartDate((LocalDate) request.getParameters().get("startDate"));
-        taxRequest.setEndDate((LocalDate) request.getParameters().get("endDate"));
+        taxRequest.setStartDate(asLocalDate(param(request, "startDate")));
+        taxRequest.setEndDate(asLocalDate(param(request, "endDate")));
         
         TaxReportDTO report = taxService.generateTaxReport(businessId, taxRequest);
         
@@ -365,8 +365,8 @@ public class ReportExportService {
     
     private byte[] exportSalesByServiceReport(UUID businessId, ExportReportRequest request) {
         SalesByServiceRequest salesRequest = new SalesByServiceRequest();
-        salesRequest.setStartDate((LocalDate) request.getParameters().get("startDate"));
-        salesRequest.setEndDate((LocalDate) request.getParameters().get("endDate"));
+        salesRequest.setStartDate(asLocalDate(param(request, "startDate")));
+        salesRequest.setEndDate(asLocalDate(param(request, "endDate")));
         
         SalesByServiceDTO report = salesService.generateSalesByServiceReport(businessId, salesRequest);
         
@@ -396,9 +396,9 @@ public class ReportExportService {
     
     private byte[] exportEmployeePerformanceReport(UUID businessId, ExportReportRequest request) {
         EmployeePerfRequest perfRequest = new EmployeePerfRequest();
-        perfRequest.setStartDate((LocalDate) request.getParameters().get("startDate"));
-        perfRequest.setEndDate((LocalDate) request.getParameters().get("endDate"));
-        perfRequest.setShopId((UUID) request.getParameters().get("shopId"));
+        perfRequest.setStartDate(asLocalDate(param(request, "startDate")));
+        perfRequest.setEndDate(asLocalDate(param(request, "endDate")));
+        perfRequest.setShopId(asUUID(param(request, "shopId")));
         
         List<EmployeePerfDTO> reports = employeeService.generateEmployeePerformanceReport(businessId, perfRequest);
         
@@ -427,5 +427,39 @@ public class ReportExportService {
         } catch (IOException e) {
             throw new RuntimeException("Failed to generate CSV report", e);
         }
+    }
+
+    private Object param(ExportReportRequest request, String key) {
+        return request.getParameters() != null ? request.getParameters().get(key) : null;
+    }
+
+    private LocalDate asLocalDate(Object raw) {
+        if (raw == null) {
+            return LocalDate.now();
+        }
+        if (raw instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (raw instanceof String s && !s.isBlank()) {
+            return LocalDate.parse(s);
+        }
+        return LocalDate.now();
+    }
+
+    private UUID asUUID(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof UUID uuid) {
+            return uuid;
+        }
+        if (raw instanceof String s && !s.isBlank()) {
+            return UUID.fromString(s);
+        }
+        return null;
+    }
+
+    private String asString(Object raw) {
+        return raw instanceof String s ? s : null;
     }
 }

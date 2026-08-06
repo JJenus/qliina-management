@@ -30,7 +30,7 @@ public class UserRole extends BaseEntity {
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
-    @Column(name = "business_id", nullable = false)
+    @Column(name = "business_id", nullable = true)
     private UUID businessId;
 
     @Column(name = "shop_id", nullable = false)

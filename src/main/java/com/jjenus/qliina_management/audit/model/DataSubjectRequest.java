@@ -21,7 +21,7 @@ public class DataSubjectRequest extends BaseTenantEntity {
     @Column(name = "request_number", nullable = false, unique = true)
     private String requestNumber;
     
-    @Column(name = "customer_id", nullable = false)
+    @Column(name = "customer_id")
     private UUID customerId;
     
     @Column(name = "customer_name")

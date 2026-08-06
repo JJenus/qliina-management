@@ -22,6 +22,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     
     Page<AuditLog> findByUserId(UUID userId, Pageable pageable);
     
+    Page<AuditLog> findByBusinessIdAndEntityTypeAndEntityId(UUID businessId, String entityType, UUID entityId, Pageable pageable);
+
+    Page<AuditLog> findByBusinessIdAndUserId(UUID businessId, UUID userId, Pageable pageable);
+
     Page<AuditLog> findByEntityTypeAndEntityId(String entityType, UUID entityId, Pageable pageable);
     
     @Query("SELECT a FROM AuditLog a WHERE a.businessId = :businessId " +

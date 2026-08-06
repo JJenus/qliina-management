@@ -19,7 +19,7 @@ public class CustomerPreferences extends BaseEntity {
     @JoinColumn(name = "customer_id", nullable = false, unique = true)
     private Customer customer;
     
-    @Column(name = "fabric_care", columnDefinition = "text[]")
+    @Column(name = "fabric_care", columnDefinition = "text ARRAY")
     private List<String> fabricCare = new ArrayList<>();
     
     @Column(name = "delivery_instructions")

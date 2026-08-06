@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AddNoteRequest {
     @NotBlank(message = "Content is required")
     private String content;

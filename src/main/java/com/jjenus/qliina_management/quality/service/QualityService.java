@@ -110,6 +110,7 @@ public class QualityService {
     @Transactional
     public QualityCheckResultDTO performQualityCheck(UUID businessId, UUID orderId, UUID itemId, QualityCheckRequest request) {
         QualityCheck check = new QualityCheck();
+        check.setBusinessId(businessId);
         check.setOrderItemId(itemId);
         check.setChecklistId(request.getChecklistId());
         check.setCheckedBy(getCurrentUserId());
@@ -194,6 +195,7 @@ public class QualityService {
     @Transactional
     public DefectDTO reportDefect(UUID businessId, UUID orderId, UUID itemId, ReportDefectRequest request) {
         QualityCheck check = new QualityCheck();
+        check.setBusinessId(businessId);
         check.setOrderItemId(itemId);
         check.setCheckedBy(getCurrentUserId());
         check.setCheckedAt(LocalDateTime.now());

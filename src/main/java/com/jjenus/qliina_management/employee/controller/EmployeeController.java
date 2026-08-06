@@ -457,7 +457,7 @@ public class EmployeeController {
         @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PutMapping("/targets/{targetId}")
-    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.update')")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.manage')")
     public ResponseEntity<EmployeeTargetsDTO.TargetDTO> updateTargetAchievement(
             @Parameter(description = "Business ID", required = true)
             @PathVariable UUID businessId,

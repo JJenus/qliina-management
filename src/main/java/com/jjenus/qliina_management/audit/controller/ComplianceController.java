@@ -61,7 +61,7 @@ public class ComplianceController {
             @PathVariable UUID businessId,
             @PathVariable UUID policyId,
             @Valid @RequestBody CreateRetentionPolicyRequest request) {
-        return ResponseEntity.ok(retentionService.updatePolicy(policyId, request));
+        return ResponseEntity.ok(retentionService.updatePolicy(businessId, policyId, request));
     }
     
     @Operation(summary = "Delete retention policy", description = "Delete a data retention policy")
@@ -70,7 +70,7 @@ public class ComplianceController {
     public ResponseEntity<SuccessResponse> deleteRetentionPolicy(
             @PathVariable UUID businessId,
             @PathVariable UUID policyId) {
-        retentionService.deletePolicy(policyId);
+        retentionService.deletePolicy(businessId, policyId);
         return ResponseEntity.ok(SuccessResponse.of("Policy deleted successfully"));
     }
     
@@ -89,7 +89,7 @@ public class ComplianceController {
     public ResponseEntity<List<ConsentDTO>> getCustomerConsents(
             @PathVariable UUID businessId,
             @PathVariable UUID customerId) {
-        return ResponseEntity.ok(consentService.getCustomerConsents(customerId));
+        return ResponseEntity.ok(consentService.getCustomerConsents(businessId, customerId));
     }
     
     @Operation(summary = "Record consent", description = "Record customer consent")
@@ -111,7 +111,7 @@ public class ComplianceController {
             @PathVariable String consentType,
             Principal principal) {
         UUID userId = getCurrentUserId(principal);
-        consentService.revokeConsent(customerId, consentType, userId);
+        consentService.revokeConsent(businessId, customerId, consentType, userId);
         return ResponseEntity.ok(SuccessResponse.of("Consent revoked successfully"));
     }
     
@@ -147,7 +147,7 @@ public class ComplianceController {
     public ResponseEntity<DataSubjectRequestDTO> getDataSubjectRequest(
             @PathVariable UUID businessId,
             @PathVariable UUID requestId) {
-        return ResponseEntity.ok(dsrService.getRequest(requestId));
+        return ResponseEntity.ok(dsrService.getRequest(businessId, requestId));
     }
     
     @Operation(summary = "Update DSR", description = "Update data subject request")
@@ -157,7 +157,7 @@ public class ComplianceController {
             @PathVariable UUID businessId,
             @PathVariable UUID requestId,
             @Valid @RequestBody UpdateDataSubjectRequest request) {
-        return ResponseEntity.ok(dsrService.updateRequest(requestId, request));
+        return ResponseEntity.ok(dsrService.updateRequest(businessId, requestId, request));
     }
     
     @Operation(summary = "Process DSR", description = "Process a data subject request")
@@ -166,7 +166,7 @@ public class ComplianceController {
     public ResponseEntity<DataSubjectRequestDTO> processDataSubjectRequest(
             @PathVariable UUID businessId,
             @PathVariable UUID requestId) {
-        return ResponseEntity.ok(dsrService.processRequest(requestId));
+        return ResponseEntity.ok(dsrService.processRequest(businessId, requestId));
     }
     
     // ==================== Security Events ====================
@@ -233,7 +233,7 @@ public class ComplianceController {
     public ResponseEntity<ComplianceReportDTO> getComplianceReport(
             @PathVariable UUID businessId,
             @PathVariable UUID reportId) {
-        return ResponseEntity.ok(reportService.getReport(reportId));
+        return ResponseEntity.ok(reportService.getReport(businessId, reportId));
     }
     
     @Operation(summary = "Download report", description = "Download compliance report file")
@@ -242,7 +242,7 @@ public class ComplianceController {
     public ResponseEntity<byte[]> downloadReport(
             @PathVariable UUID businessId,
             @PathVariable UUID reportId) {
-        byte[] data = reportService.downloadReport(reportId);
+        byte[] data = reportService.downloadReport(businessId, reportId);
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"compliance_report.pdf\"")
             .contentType(MediaType.APPLICATION_PDF)

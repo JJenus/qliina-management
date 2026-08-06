@@ -1,5 +1,7 @@
 package com.jjenus.qliina_management.audit.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjenus.qliina_management.audit.dto.ComplianceReportDTO;
 import com.jjenus.qliina_management.audit.model.ComplianceReport;
 import com.jjenus.qliina_management.audit.repository.ComplianceReportRepository;
@@ -28,6 +30,7 @@ public class ComplianceReportService {
     private final AuditService auditService;
     private final ConsentService consentService;
     private final DataSubjectRequestService dsrService;
+    private final ObjectMapper objectMapper;
     
     @Transactional
     public ComplianceReportDTO generateGDPRReport(UUID businessId) {
@@ -64,7 +67,7 @@ public class ComplianceReportService {
             )
         );
         
-        report.setReportData(reportData.toString()); // In real impl, use JSON
+        report.setReportData(toJson(reportData));
         
         report = reportRepository.save(report);
         
@@ -90,17 +93,23 @@ public class ComplianceReportService {
     }
     
     @Transactional(readOnly = true)
-    public ComplianceReportDTO getReport(UUID reportId) {
+    public ComplianceReportDTO getReport(UUID businessId, UUID reportId) {
         ComplianceReport report = reportRepository.findById(reportId)
             .orElseThrow(() -> new BusinessException("Report not found", "REPORT_NOT_FOUND"));
+        if (!businessId.equals(report.getBusinessId())) {
+            throw new BusinessException("Report not found", "REPORT_NOT_FOUND");
+        }
         return mapToDTO(report);
     }
     
     @Transactional
-    public byte[] downloadReport(UUID reportId) {
+    public byte[] downloadReport(UUID businessId, UUID reportId) {
         ComplianceReport report = reportRepository.findById(reportId)
             .orElseThrow(() -> new BusinessException("Report not found", "REPORT_NOT_FOUND"));
-        
+        if (!businessId.equals(report.getBusinessId())) {
+            throw new BusinessException("Report not found", "REPORT_NOT_FOUND");
+        }
+
         // In a real implementation, generate PDF/CSV file
         return new byte[0];
     }
@@ -108,6 +117,14 @@ public class ComplianceReportService {
     private String generateReportNumber(UUID businessId, String prefix) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         return String.format("%s-%s-%s", prefix, businessId.toString().substring(0, 4), timestamp);
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException("Failed to serialize report data", "REPORT_SERIALIZATION_FAILED");
+        }
     }
     
     private UUID getCurrentUserId() {

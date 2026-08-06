@@ -25,11 +25,11 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
 
     Page<Order> findByCustomerId(UUID customerId, Pageable pageable);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.createdBy = :employeeId AND FUNCTION('DATE', o.createdAt) = :date")
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.createdBy = :employeeId AND cast(o.createdAt as date) = :date")
     Integer countByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
                                      @Param("date") LocalDate date);
 
-    @Query("SELECT SUM(oi.quantity) FROM OrderItem oi WHERE oi.order.createdBy = :employeeId AND FUNCTION('DATE', oi.order.createdAt) = :date")
+    @Query("SELECT SUM(oi.quantity) FROM OrderItem oi WHERE oi.order.createdBy = :employeeId AND cast(oi.order.createdAt as date) = :date")
     Integer countItemsByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
                                           @Param("date") LocalDate date);
 
@@ -90,7 +90,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
                                      @Param("startDate") LocalDateTime startDate,
                                      @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.businessId = :businessId AND FUNCTION('DATE', o.createdAt) = CURRENT_DATE")
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.businessId = :businessId AND cast(o.createdAt as date) = CURRENT_DATE")
     Long countTodayOrders(@Param("businessId") UUID businessId);
 
     @Query("SELECT o.customerId, SUM(o.totalAmount) as total, COUNT(o) as count, AVG(o.totalAmount) as avg " +
@@ -117,16 +117,16 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
                                          @Param("endDate") LocalDateTime endDate,
                                          Pageable pageable);
 
-    @Query("SELECT FUNCTION('DATE', o.createdAt), COUNT(o), SUM(o.totalAmount) " +
+    @Query("SELECT cast(o.createdAt as date), COUNT(o), SUM(o.totalAmount) " +
             "FROM Order o WHERE o.businessId = :businessId AND o.createdAt BETWEEN :startDate AND :endDate " +
-            "GROUP BY FUNCTION('DATE', o.createdAt) ORDER BY FUNCTION('DATE', o.createdAt)")
+            "GROUP BY cast(o.createdAt as date) ORDER BY cast(o.createdAt as date)")
     List<Object[]> getDailyOrderSummary(@Param("businessId") UUID businessId,
                                         @Param("startDate") LocalDateTime startDate,
                                         @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT FUNCTION('HOUR', o.createdAt), COUNT(o) " +
-            "FROM Order o WHERE o.businessId = :businessId AND FUNCTION('DATE', o.createdAt) = :date " +
-            "GROUP BY FUNCTION('HOUR', o.createdAt) ORDER BY FUNCTION('HOUR', o.createdAt)")
+    @Query("SELECT EXTRACT(HOUR FROM o.createdAt), COUNT(o) " +
+            "FROM Order o WHERE o.businessId = :businessId AND cast(o.createdAt as date) = :date " +
+            "GROUP BY EXTRACT(HOUR FROM o.createdAt) ORDER BY EXTRACT(HOUR FROM o.createdAt)")
     List<Object[]> getHourlyDistribution(@Param("businessId") UUID businessId,
                                          @Param("date") LocalDateTime date);
 

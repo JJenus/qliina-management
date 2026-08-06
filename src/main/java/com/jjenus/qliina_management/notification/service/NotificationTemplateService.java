@@ -47,10 +47,13 @@ public class NotificationTemplateService {
     }
     
     @Transactional
-    public NotificationTemplateDTO updateTemplate(UUID templateId, UpdateTemplateRequest request) {
+    public NotificationTemplateDTO updateTemplate(UUID businessId, UUID templateId, UpdateTemplateRequest request) {
         NotificationTemplate template = templateRepository.findById(templateId)
             .orElseThrow(() -> new BusinessException("Template not found", "TEMPLATE_NOT_FOUND"));
-        
+        if (!businessId.equals(template.getBusinessId())) {
+            throw new BusinessException("Template not found", "TEMPLATE_NOT_FOUND");
+        }
+
         if (request.getName() != null) template.setName(request.getName());
         if (request.getDescription() != null) template.setDescription(request.getDescription());
         if (request.getSubject() != null) template.setSubject(request.getSubject());
@@ -63,9 +66,12 @@ public class NotificationTemplateService {
     }
     
     @Transactional
-    public void deleteTemplate(UUID templateId) {
+    public void deleteTemplate(UUID businessId, UUID templateId) {
         NotificationTemplate template = templateRepository.findById(templateId)
             .orElseThrow(() -> new BusinessException("Template not found", "TEMPLATE_NOT_FOUND"));
+        if (!businessId.equals(template.getBusinessId())) {
+            throw new BusinessException("Template not found", "TEMPLATE_NOT_FOUND");
+        }
         templateRepository.delete(template);
     }
     

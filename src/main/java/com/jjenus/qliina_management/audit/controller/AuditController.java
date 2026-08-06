@@ -62,7 +62,7 @@ public class AuditController {
             @PathVariable String entityType,
             @PathVariable UUID entityId,
             @PageableDefault(size = 20, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(auditService.getEntityHistory(entityType, entityId, pageable));
+        return ResponseEntity.ok(auditService.getEntityHistory(businessId, entityType, entityId, pageable));
     }
     
     @Operation(summary = "Get user activity", description = "Get audit logs for a specific user")
@@ -72,7 +72,7 @@ public class AuditController {
             @PathVariable UUID businessId,
             @PathVariable UUID userId,
             @PageableDefault(size = 20, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(auditService.getUserActivity(userId, pageable));
+        return ResponseEntity.ok(auditService.getUserActivity(businessId, userId, pageable));
     }
     
     @Operation(summary = "Get audit summary", description = "Get summary of audit activity")

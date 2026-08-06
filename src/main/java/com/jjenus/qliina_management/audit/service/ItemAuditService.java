@@ -35,7 +35,8 @@ public class ItemAuditService {
     public PageResponse<ItemAuditEntryDTO> getItemAuditTrail(
             UUID businessId, UUID itemId, UUID requestingUserId, Pageable pageable) {
         
-        Page<AuditLog> logs = auditLogRepository.findByEntityTypeAndEntityId("ORDER_ITEM", itemId, pageable);
+        Page<AuditLog> logs = auditLogRepository.findByBusinessIdAndEntityTypeAndEntityId(
+                businessId, "ORDER_ITEM", itemId, pageable);
         
         return PageResponse.from(logs.map(log -> mapToItemAuditDTO(log)));
     }

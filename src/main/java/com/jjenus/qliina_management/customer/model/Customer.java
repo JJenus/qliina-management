@@ -55,7 +55,7 @@ public class Customer extends BaseTenantEntity {
     @Column(name = "rfm_segment")
     private String rfmSegment;
     
-    @Column(name = "tags", columnDefinition = "text[]")
+    @Column(name = "tags", columnDefinition = "text ARRAY")
     private List<String> tags = new ArrayList<>();
     
     @Column(name = "enabled")

@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.identity.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -13,6 +14,7 @@ import lombok.NoArgsConstructor;
 @Embeddable
 public class OperatingHour {
     @Enumerated(EnumType.STRING)
+    @Column(name = "\"day\"")
     private DayOfWeek day;
     
     private String openTime;

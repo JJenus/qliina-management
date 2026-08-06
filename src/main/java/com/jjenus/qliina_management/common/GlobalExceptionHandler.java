@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.common;
 
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -8,7 +9,9 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -18,6 +21,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -46,15 +50,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidationExceptions(MethodArgumentNotValidException ex, WebRequest request) {
 
+        // Sort by field then message so the reported errors map is deterministic
+        // regardless of the (unordered) constraint-violation list from the validator.
         Map<String, String> errors = ex.getBindingResult()
                 .getAllErrors()
                 .stream()
+                .filter(error -> error instanceof FieldError)
+                .sorted(Comparator
+                        .comparing((ObjectError error) -> ((FieldError) error).getField())
+                        .thenComparing(error -> error.getDefaultMessage() != null
+                                ? error.getDefaultMessage()
+                                : ""))
                 .collect(Collectors.toMap(
                         error -> ((FieldError) error).getField(),
                         error -> error.getDefaultMessage() != null
                                 ? error.getDefaultMessage()
                                 : "Invalid value",
-                        (existing, replacement) -> existing
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
                 ));
 
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
@@ -77,22 +90,24 @@ public class GlobalExceptionHandler {
             WebRequest request
     ) {
 
-        Map<String, String> errors = new LinkedHashMap<>();
-
-        ex.getParameterValidationResults().forEach(result ->
-                result.getResolvableErrors().forEach(error -> {
-
-                    String field = result.getMethodParameter().getParameterName();
-                    String message = error.getDefaultMessage() != null
-                            ? error.getDefaultMessage()
-                            : "Invalid value";
-
-                    errors.putIfAbsent(
-                            field != null ? field : "unknown",
-                            message
-                    );
-                })
-        );
+        Map<String, String> errors = ex.getParameterValidationResults()
+                .stream()
+                .sorted(Comparator.comparing(result ->
+                        result.getMethodParameter().getParameterName() != null
+                                ? result.getMethodParameter().getParameterName()
+                                : ""))
+                .collect(Collectors.toMap(
+                        result -> result.getMethodParameter().getParameterName() != null
+                                ? result.getMethodParameter().getParameterName()
+                                : "unknown",
+                        result -> result.getResolvableErrors().isEmpty()
+                                ? "Invalid value"
+                                : (result.getResolvableErrors().get(0).getDefaultMessage() != null
+                                        ? result.getResolvableErrors().get(0).getDefaultMessage()
+                                        : "Invalid value"),
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                ));
 
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.BAD_REQUEST,
@@ -138,10 +153,15 @@ public class GlobalExceptionHandler {
 
         Map<String, String> errors = ex.getConstraintViolations()
                 .stream()
+                .sorted(Comparator
+                        .comparing((ConstraintViolation<?> violation) ->
+                                violation.getPropertyPath().toString())
+                        .thenComparing(ConstraintViolation::getMessage))
                 .collect(Collectors.toMap(
                         violation -> violation.getPropertyPath().toString(),
-                        violation -> violation.getMessage(),
-                        (existing, replacement) -> existing
+                        ConstraintViolation::getMessage,
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
                 ));
 
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
@@ -187,6 +207,27 @@ public class GlobalExceptionHandler {
         return problemDetail;
     }
 
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ProblemDetail handleMissingServletRequestParameter(
+            MissingServletRequestParameterException ex,
+            WebRequest request
+    ) {
+
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Required parameter '" + ex.getParameterName() + "' is missing"
+        );
+
+        problemDetail.setTitle("Missing Parameter");
+        problemDetail.setType(URI.create("https://api.laundry.com/errors/missing-parameter"));
+        problemDetail.setProperty("errorCode", "MISSING_PARAMETER");
+        problemDetail.setProperty("parameter", ex.getParameterName());
+        problemDetail.setProperty("timestamp", LocalDateTime.now());
+        problemDetail.setProperty("path", extractPath(request));
+
+        return problemDetail;
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ProblemDetail handleBadCredentials(
             BadCredentialsException ex,
@@ -224,6 +265,20 @@ public class GlobalExceptionHandler {
         problemDetail.setProperty("timestamp", LocalDateTime.now());
         problemDetail.setProperty("path", extractPath(request));
 
+        return problemDetail;
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleIllegalArgument(IllegalArgumentException ex, WebRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                ex.getMessage() != null ? ex.getMessage() : "Invalid request parameters"
+        );
+        problemDetail.setTitle("Invalid Request");
+        problemDetail.setType(URI.create("https://api.laundry.com/errors/invalid-request"));
+        problemDetail.setProperty("errorCode", "INVALID_REQUEST");
+        problemDetail.setProperty("timestamp", LocalDateTime.now());
+        problemDetail.setProperty("path", extractPath(request));
         return problemDetail;
     }
 

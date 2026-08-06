@@ -46,7 +46,7 @@ public class AuthController {
 
     @Operation(summary = "Register a new business",
                description = "Open self-registration. Atomically creates a Business, its first Shop, "
-                           + "and a BUSINESS_OWNER user. Returns JWT tokens immediately.")
+                           + "and a BUSINESS_ADMIN user. Returns JWT tokens immediately.")
     @ApiResponses({
         @ApiResponse(responseCode = "201", description = "Registered successfully",
             content = @Content(schema = @Schema(implementation = BusinessRegistrationResponse.class))),

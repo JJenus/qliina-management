@@ -8,7 +8,7 @@ import lombok.Data;
  * Payload for POST /api/v1/auth/register-business.
  *
  * Contains both business-level and first-user (owner) fields so a Business,
- * its initial Shop, and the BUSINESS_OWNER user can be created atomically.
+ * its initial Shop, and the BUSINESS_ADMIN user can be created atomically.
  */
 @Data
 public class CreateBusinessRequest {

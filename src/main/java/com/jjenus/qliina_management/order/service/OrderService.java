@@ -372,7 +372,12 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
         timeline.setTimestamp(LocalDateTime.now());
         timeline.setUserId(getCurrentUserId());
         timeline.setUserName(getUserName(getCurrentUserId()));
-        timeline.setMetadata(Map.of("reason", request.getReason(), "notes", request.getNotes()));
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("reason", request.getReason());
+        if (request.getNotes() != null) {
+            metadata.put("notes", request.getNotes());
+        }
+        timeline.setMetadata(metadata);
         order.getTimeline().add(timeline);
         
         orderRepository.save(order);

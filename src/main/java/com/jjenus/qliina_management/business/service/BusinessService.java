@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  * Core service for managing Business entities and the open self-registration flow.
  *
  * The registerBusiness method is a single @Transactional operation that atomically
- * creates a Business row, the first Shop, the BUSINESS_OWNER User, AuthAccount
+ * creates a Business row, the first Shop, the BUSINESS_ADMIN User, AuthAccount
  * credentials, and returns JWT tokens so the caller is immediately authenticated.
  */
 @Slf4j
@@ -63,7 +63,7 @@ public class BusinessService {
     // -------------------------------------------------------------------------
 
     /**
-     * Creates a Business, its first Shop, and a BUSINESS_OWNER User atomically.
+     * Creates a Business, its first Shop, and a BUSINESS_ADMIN User atomically.
      * Returns JWT tokens so the caller is immediately authenticated.
      *
      * @param request validated registration payload
@@ -153,10 +153,10 @@ public class BusinessService {
         AuthAccount savedAuth = authAccountRepository.save(auth);
           
         user.setAuthAccount(savedAuth);
-        // 9. Assign BUSINESS_OWNER role (business-level, shopId = null)
-        Role ownerRole = roleRepository.findByName("BUSINESS_OWNER")
+        // 9. Assign BUSINESS_ADMIN role (business-level, shopId = null)
+        Role ownerRole = roleRepository.findByName("BUSINESS_ADMIN")
                 .orElseThrow(() -> new BusinessException(
-                        "BUSINESS_OWNER role not found — ensure DataInitializer has run",
+                        "BUSINESS_ADMIN role not found — ensure DataInitializer has run",
                         "ROLE_NOT_FOUND"));
         UserRole userRole = new UserRole();
         userRole.setUser(user); userRole.setRole(ownerRole);

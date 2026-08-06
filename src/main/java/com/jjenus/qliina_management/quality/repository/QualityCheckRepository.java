@@ -22,7 +22,7 @@ public interface QualityCheckRepository extends JpaRepository<QualityCheck, UUID
     Optional<QualityCheck> findByOrderItemId(UUID orderItemId);
 
     @Query("SELECT AVG(CASE WHEN qc.status = 'PASSED' THEN 100 ELSE 0 END) " +
-            "FROM QualityCheck qc WHERE qc.checkedBy = :employeeId AND FUNCTION('DATE', qc.checkedAt) = :date")
+            "FROM QualityCheck qc WHERE qc.checkedBy = :employeeId AND cast(qc.checkedAt as date) = :date")
     Double averageScoreByEmployeeIdAndDate(@Param("employeeId") UUID employeeId,
                                            @Param("date") LocalDate date);
 
@@ -32,7 +32,7 @@ public interface QualityCheckRepository extends JpaRepository<QualityCheck, UUID
                                                 @Param("startDate") LocalDateTime startDate,
                                                 @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COUNT(CASE WHEN qc.status = 'FAILED' THEN 1 END) * 100.0 / COUNT(qc) " +
+    @Query("SELECT COUNT(CASE WHEN qc.status = 'FAILED' THEN 1 END) * 100.0 / NULLIF(COUNT(qc), 0) " +
             "FROM QualityCheck qc WHERE qc.checkedBy = :employeeId AND qc.checkedAt BETWEEN :startDate AND :endDate")
     Double reworkRateByEmployeeIdAndDateRange(@Param("employeeId") UUID employeeId,
                                               @Param("startDate") LocalDateTime startDate,
@@ -54,11 +54,11 @@ List<Object[]> getEmployeePerformance(@Param("businessId") UUID businessId,
                                       @Param("startDate") LocalDateTime startDate,
                                       @Param("endDate") LocalDateTime endDate);
  
-    @Query("SELECT FUNCTION('DATE', qc.checkedAt), " +
+    @Query("SELECT cast(qc.checkedAt as date), " +
             "AVG(CASE WHEN qc.status = 'PASSED' THEN 100 ELSE 0 END) " +
             "FROM QualityCheck qc WHERE qc.checkedBy = :employeeId " +
             "AND qc.checkedAt BETWEEN :startDate AND :endDate " +
-            "GROUP BY FUNCTION('DATE', qc.checkedAt)")
+            "GROUP BY cast(qc.checkedAt as date)")
     List<Object[]> getDailyPerformance(@Param("employeeId") UUID employeeId,
                                        @Param("startDate") LocalDateTime startDate,
                                        @Param("endDate") LocalDateTime endDate);

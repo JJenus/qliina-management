@@ -5,7 +5,7 @@ services:
     image: postgres:16-alpine
     container_name: laundry-postgres
     environment:
-      POSTGRES_DB: laundry_db
+      POSTGRES_DB: qliina_db
       POSTGRES_USER: laundry_user
       POSTGRES_PASSWORD: laundry_pass
     ports:
@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/laundry_db
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/qliina_db
       SPRING_DATASOURCE_USERNAME: laundry_user
       SPRING_DATASOURCE_PASSWORD: laundry_pass
       JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}

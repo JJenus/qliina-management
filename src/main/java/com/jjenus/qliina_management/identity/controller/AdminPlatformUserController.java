@@ -108,8 +108,9 @@ public class AdminPlatformUserController {
         user.setEmail(request.getEmail());
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
-        // Platform users need a phone only if backend requires it; set empty placeholder
-        user.setPhone(request.getPhone() != null ? request.getPhone() : "");
+        // Platform users have no phone; keep null unless one is provided
+        user.setPhone(request.getPhone() != null && !request.getPhone().isBlank()
+                ? request.getPhone() : null);
         user.setEnabled(true);
         user.setBusinessId(null);
         user = userRepository.save(user);

@@ -215,7 +215,7 @@ public class NotificationController {
             @PathVariable UUID templateId,
             
             @Valid @RequestBody UpdateTemplateRequest request) {
-        return ResponseEntity.ok(notificationOrchestrator.updateTemplate(templateId, request));
+        return ResponseEntity.ok(notificationOrchestrator.updateTemplate(businessId, templateId, request));
     }
     
     @Operation(
@@ -237,7 +237,7 @@ public class NotificationController {
             
             @Parameter(description = "Template ID", required = true)
             @PathVariable UUID templateId) {
-        notificationOrchestrator.deleteTemplate(templateId);
+        notificationOrchestrator.deleteTemplate(businessId, templateId);
         return ResponseEntity.ok(SuccessResponse.of("Template deleted successfully"));
     }
     
@@ -279,7 +279,7 @@ public class NotificationController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/logs")
-    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'audit.view')")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'admin.audit')")
     public ResponseEntity<PageResponse<NotificationLogDTO>> getNotificationLogs(
             @Parameter(description = "Business ID", required = true)
             @PathVariable UUID businessId,

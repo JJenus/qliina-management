@@ -33,7 +33,8 @@ public class ConsentService {
     private final CustomerRepository customerRepository;
     
     @Transactional(readOnly = true)
-    public List<ConsentDTO> getCustomerConsents(UUID customerId) {
+    public List<ConsentDTO> getCustomerConsents(UUID businessId, UUID customerId) {
+        assertCustomerInBusiness(businessId, customerId);
         return consentRepository.findByCustomerId(customerId).stream()
             .map(this::mapToDTO)
             .collect(Collectors.toList());
@@ -49,6 +50,7 @@ public class ConsentService {
     
     @Transactional
     public ConsentDTO recordConsent(UUID businessId, UUID customerId, ConsentRequest request) {
+        assertCustomerInBusiness(businessId, customerId);
         Customer customer = customerRepository.findById(customerId)
             .orElseThrow(() -> new BusinessException("Customer not found", "CUSTOMER_NOT_FOUND"));
         
@@ -86,7 +88,8 @@ public class ConsentService {
     }
     
     @Transactional
-    public void revokeConsent(UUID customerId, String consentType, UUID revokedBy) {
+    public void revokeConsent(UUID businessId, UUID customerId, String consentType, UUID revokedBy) {
+        assertCustomerInBusiness(businessId, customerId);
         ConsentRecord.ConsentType type = ConsentRecord.ConsentType.valueOf(consentType);
         
         consentRepository.findActiveConsent(customerId, type)
@@ -134,6 +137,12 @@ public class ConsentService {
     }
     return result;
 }
+    
+    private void assertCustomerInBusiness(UUID businessId, UUID customerId) {
+        customerRepository.findById(customerId)
+            .filter(c -> businessId.equals(c.getBusinessId()))
+            .orElseThrow(() -> new BusinessException("Customer not found", "CUSTOMER_NOT_FOUND"));
+    }
     
     private HttpServletRequest getCurrentHttpRequest() {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();

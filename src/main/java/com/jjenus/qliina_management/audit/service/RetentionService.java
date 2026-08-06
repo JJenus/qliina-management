@@ -61,10 +61,13 @@ public class RetentionService {
     }
     
     @Transactional
-    public DataRetentionPolicyDTO updatePolicy(UUID policyId, CreateRetentionPolicyRequest request) {
+    public DataRetentionPolicyDTO updatePolicy(UUID businessId, UUID policyId, CreateRetentionPolicyRequest request) {
         DataRetentionPolicy policy = policyRepository.findById(policyId)
             .orElseThrow(() -> new BusinessException("Policy not found", "POLICY_NOT_FOUND"));
-        
+        if (!businessId.equals(policy.getBusinessId())) {
+            throw new BusinessException("Policy not found", "POLICY_NOT_FOUND");
+        }
+
         policy.setRetentionDays(request.getRetentionDays());
         policy.setArchiveEnabled(request.getArchiveEnabled() != null ? request.getArchiveEnabled() : policy.getArchiveEnabled());
         policy.setArchiveLocation(request.getArchiveLocation());
@@ -76,9 +79,12 @@ public class RetentionService {
     }
     
     @Transactional
-    public void deletePolicy(UUID policyId) {
+    public void deletePolicy(UUID businessId, UUID policyId) {
         DataRetentionPolicy policy = policyRepository.findById(policyId)
             .orElseThrow(() -> new BusinessException("Policy not found", "POLICY_NOT_FOUND"));
+        if (!businessId.equals(policy.getBusinessId())) {
+            throw new BusinessException("Policy not found", "POLICY_NOT_FOUND");
+        }
         policyRepository.delete(policy);
     }
     

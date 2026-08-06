@@ -34,10 +34,9 @@ public class TaxReportService {
         List<Order> orders = orderRepository.findByDateRange(businessId, startDateTime, endDateTime, null)
             .getContent();
         
-        BusinessConfig config = configRepository.findByBusinessId(businessId)
-            .orElseThrow(() -> new RuntimeException("Business configuration not found"));
+        BusinessConfig config = configRepository.findByBusinessId(businessId).orElse(null);
         
-        BigDecimal taxRate = config.getTaxRate() != null ? 
+        BigDecimal taxRate = config != null && config.getTaxRate() != null ?
             config.getTaxRate() : BigDecimal.ZERO;
         
         BigDecimal totalSales = orders.stream()

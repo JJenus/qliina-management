@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.reporting.service;
 
+import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.employee.model.EmployeePerformance;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import com.jjenus.qliina_management.employee.repository.EmployeePerformanceRepository;
@@ -41,7 +42,7 @@ public class EmployeeReportService {
         if (request.getEmployeeId() != null) {
             employees = Collections.singletonList(
                 userRepository.findById(request.getEmployeeId())
-                    .orElseThrow(() -> new RuntimeException("Employee not found"))
+                    .orElseThrow(() -> new BusinessException("Employee not found", "EMPLOYEE_NOT_FOUND"))
             );
         } else {
            List<String> roles = Arrays.asList("WASHER", "IRONER", "FRONT_DESK");
