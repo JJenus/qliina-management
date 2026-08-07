@@ -1,11 +1,11 @@
 package com.jjenus.qliina_management.business.service;
 
+import com.jjenus.qliina_management.billing.service.BillingFeatureResolver;
+import com.jjenus.qliina_management.billing.service.SubscriptionService;
 import com.jjenus.qliina_management.business.dto.PlanUsageDTO;
 import com.jjenus.qliina_management.business.model.Business;
-import com.jjenus.qliina_management.business.model.SubscriptionPlan;
 import com.jjenus.qliina_management.business.repository.BusinessRepository;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
-import com.jjenus.qliina_management.business.repository.SubscriptionPlanRepository;
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.notification.model.Notification;
@@ -21,10 +21,12 @@ import java.util.UUID;
 
 /**
  * Enforces subscription plan limits across the platform.
- * <p>
- * Hard limits throw {@link BusinessException} with code PLAN_LIMIT_EXCEEDED.
- * Feature gates throw {@link BusinessException} with code FEATURE_NOT_AVAILABLE.
- * Warning notifications are sent asynchronously when usage reaches 80%.
+ *
+ * <p>Source of truth is the billing schema (MD §2): limits and feature flags are
+ * read from plan_features via {@link BillingFeatureResolver} — never from a
+ * fixed-column plans table. Hard limits throw {@link BusinessException} with code
+ * PLAN_LIMIT_EXCEEDED; feature gates throw FEATURE_NOT_AVAILABLE; warnings are
+ * queued asynchronously at 80% usage.
  */
 @Slf4j
 @Service
@@ -33,7 +35,8 @@ public class PlanLimitService {
 
     private static final double WARNING_THRESHOLD = 0.8;
 
-    private final SubscriptionPlanRepository planRepository;
+    private final BillingFeatureResolver     featureResolver;
+    private final SubscriptionService        subscriptionService;
     private final BusinessRepository         businessRepository;
     private final ShopRepository             shopRepository;
     private final UserRepository             userRepository;
@@ -41,16 +44,23 @@ public class PlanLimitService {
     private final NotificationRepository     notificationRepository;
 
     // -------------------------------------------------------------------------
-    // Plan lookup
+    // Plan identity (falls back to FREE when no live subscription exists)
     // -------------------------------------------------------------------------
 
-    public SubscriptionPlan getPlan(UUID businessId) {
-        Business business = businessRepository.findById(businessId)
-                .orElseThrow(() -> new BusinessException("Business not found", "BUSINESS_NOT_FOUND"));
-        String tierName = business.getPlan().name();
-        return planRepository.findByTier(tierName)
-                .orElseGet(() -> planRepository.findByTier("FREE")
-                        .orElseThrow(() -> new BusinessException("Subscription plan not configured", "PLAN_NOT_FOUND")));
+    public String planName(UUID businessId) {
+        try {
+            return subscriptionService.getLiveSubscription(businessId).getPlan().getName();
+        } catch (BusinessException e) {
+            return "Free";
+        }
+    }
+
+    public String planTier(UUID businessId) {
+        try {
+            return subscriptionService.getLiveSubscription(businessId).getPlan().getName().toUpperCase();
+        } catch (BusinessException e) {
+            return "FREE";
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -59,83 +69,64 @@ public class PlanLimitService {
 
     /** Called before creating a new shop. Throws if at or above hard limit. */
     public void enforceShopLimit(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxShops() < 0) return; // unlimited
+        int maxShops = featureResolver.intValue(businessId, "max_shops", -1);
+        if (maxShops < 0) return; // unlimited
         long current = shopRepository.countActiveByBusinessId(businessId);
-        if (current >= plan.getMaxShops()) {
+        if (current >= maxShops) {
             throw new BusinessException(
-                    "Your plan allows a maximum of " + plan.getMaxShops() + " shops. Upgrade to add more.",
+                    "Your plan allows a maximum of " + maxShops + " shops. Upgrade to add more.",
                     "PLAN_LIMIT_EXCEEDED");
         }
-        // Warn at 80%
-        double ratio = (double) current / plan.getMaxShops();
+        double ratio = (double) current / maxShops;
         if (ratio >= WARNING_THRESHOLD) {
             sendPlanWarning(businessId,
-                    "Shop limit warning: you are using " + current + " of " + plan.getMaxShops() + " shops.",
+                    "Shop limit warning: you are using " + current + " of " + maxShops + " shops.",
                     ratio);
         }
     }
 
     /** Called before creating a new user. Throws if at or above hard limit. */
     public void enforceUserLimit(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxUsers() < 0) return;
+        int maxUsers = featureResolver.intValue(businessId, "max_users", -1);
+        if (maxUsers < 0) return;
         long current = userRepository.countByBusinessIdAndEnabledTrue(businessId);
-        if (current >= plan.getMaxUsers()) {
+        if (current >= maxUsers) {
             throw new BusinessException(
-                    "Your plan allows a maximum of " + plan.getMaxUsers() + " users. Upgrade to add more.",
+                    "Your plan allows a maximum of " + maxUsers + " users. Upgrade to add more.",
                     "PLAN_LIMIT_EXCEEDED");
         }
-        double ratio = (double) current / plan.getMaxUsers();
+        double ratio = (double) current / maxUsers;
         if (ratio >= WARNING_THRESHOLD) {
             sendPlanWarning(businessId,
-                    "User limit warning: you are using " + current + " of " + plan.getMaxUsers() + " users.",
+                    "User limit warning: you are using " + current + " of " + maxUsers + " users.",
                     ratio);
         }
     }
 
     /** Called before creating a new order. Throws if at or above monthly hard limit. */
     public void enforceOrderLimit(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxOrdersPerMonth() < 0) return;
+        int maxOrders = featureResolver.intValue(businessId, "max_orders_per_month", -1);
+        if (maxOrders < 0) return;
         LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
         long current = orderRepository.countOrdersByDateRange(businessId, null, monthStart, LocalDateTime.now());
-        if (current >= plan.getMaxOrdersPerMonth()) {
+        if (current >= maxOrders) {
             throw new BusinessException(
-                    "Monthly order limit reached (" + plan.getMaxOrdersPerMonth() + "). Upgrade for unlimited orders.",
+                    "Monthly order limit reached (" + maxOrders + "). Upgrade for unlimited orders.",
                     "PLAN_LIMIT_EXCEEDED");
         }
-        double ratio = (double) current / plan.getMaxOrdersPerMonth();
+        double ratio = (double) current / maxOrders;
         if (ratio >= WARNING_THRESHOLD) {
             sendPlanWarning(businessId,
-                    "Order limit warning: " + current + " of " + plan.getMaxOrdersPerMonth() + " orders used this month.",
+                    "Order limit warning: " + current + " of " + maxOrders + " orders used this month.",
                     ratio);
         }
     }
 
     /**
-     * Throws FEATURE_NOT_AVAILABLE if the feature flag is false for the business's plan.
-     *
-     * @param featureName one of: advancedAnalytics, exportReports, loyaltyProgram,
-     *                    qualityControl, apiAccess, prioritySupport, customBranding, multiShopReporting
+     * Throws FEATURE_NOT_AVAILABLE if the feature flag is disabled for the business's plan.
      */
     public void enforceFeature(UUID businessId, String featureName) {
-        SubscriptionPlan plan = getPlan(businessId);
-        boolean allowed = switch (featureName) {
-            case "advancedAnalytics"  -> plan.isAdvancedAnalytics();
-            case "exportReports"      -> plan.isExportReports();
-            case "loyaltyProgram"     -> plan.isLoyaltyProgram();
-            case "qualityControl"     -> plan.isQualityControl();
-            case "apiAccess"          -> plan.isApiAccess();
-            case "prioritySupport"    -> plan.isPrioritySupport();
-            case "customBranding"     -> plan.isCustomBranding();
-            case "multiShopReporting" -> plan.isMultiShopReporting();
-            default -> {
-                log.warn("Unknown feature name checked: {}", featureName);
-                yield true; // unknown features are permitted by default
-            }
-        };
-        if (!allowed) {
+        if (!featureResolver.boolValue(businessId, featureName, false)) {
             throw new BusinessException(
                     "Feature '" + featureName + "' is not available on your current plan. Upgrade to access it.",
                     "FEATURE_NOT_AVAILABLE");
@@ -147,23 +138,23 @@ public class PlanLimitService {
     // -------------------------------------------------------------------------
 
     public double shopUsageRatio(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxShops() < 0) return -1;
-        return (double) shopRepository.countActiveByBusinessId(businessId) / plan.getMaxShops();
+        int maxShops = featureResolver.intValue(businessId, "max_shops", -1);
+        if (maxShops < 0) return -1;
+        return (double) shopRepository.countActiveByBusinessId(businessId) / maxShops;
     }
 
     public double userUsageRatio(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxUsers() < 0) return -1;
-        return (double) userRepository.countByBusinessIdAndEnabledTrue(businessId) / plan.getMaxUsers();
+        int maxUsers = featureResolver.intValue(businessId, "max_users", -1);
+        if (maxUsers < 0) return -1;
+        return (double) userRepository.countByBusinessIdAndEnabledTrue(businessId) / maxUsers;
     }
 
     public double orderUsageRatio(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
-        if (plan.getMaxOrdersPerMonth() < 0) return -1;
+        int maxOrders = featureResolver.intValue(businessId, "max_orders_per_month", -1);
+        if (maxOrders < 0) return -1;
         LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
         long current = orderRepository.countOrdersByDateRange(businessId, null, monthStart, LocalDateTime.now());
-        return (double) current / plan.getMaxOrdersPerMonth();
+        return (double) current / maxOrders;
     }
 
     // -------------------------------------------------------------------------
@@ -171,14 +162,18 @@ public class PlanLimitService {
     // -------------------------------------------------------------------------
 
     public PlanUsageDTO getUsageSummary(UUID businessId) {
-        SubscriptionPlan plan = getPlan(businessId);
         Business business = businessRepository.findById(businessId)
                 .orElseThrow(() -> new BusinessException("Business not found", "BUSINESS_NOT_FOUND"));
 
-        long activeShops   = shopRepository.countActiveByBusinessId(businessId);
-        long activeUsers   = userRepository.countByBusinessIdAndEnabledTrue(businessId);
+        long activeShops = shopRepository.countActiveByBusinessId(businessId);
+        long activeUsers = userRepository.countByBusinessIdAndEnabledTrue(businessId);
         LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
         long ordersThisMonth = orderRepository.countOrdersByDateRange(businessId, null, monthStart, LocalDateTime.now());
+
+        int maxShops = featureResolver.intValue(businessId, "max_shops", -1);
+        int maxUsers = featureResolver.intValue(businessId, "max_users", -1);
+        int maxEmployees = featureResolver.intValue(businessId, "max_employees", -1);
+        int maxOrders = featureResolver.intValue(businessId, "max_orders_per_month", -1);
 
         int daysLeftInTrial = -1;
         boolean trialExpired = false;
@@ -190,32 +185,32 @@ public class PlanLimitService {
         }
 
         return PlanUsageDTO.builder()
-                .planName(plan.getName())
-                .tier(plan.getTier())
+                .planName(planName(businessId))
+                .tier(planTier(businessId))
                 .status(business.getStatus().name())
                 .trialEndsAt(business.getTrialEndsAt())
                 .isTrialExpired(trialExpired)
                 .daysLeftInTrial(daysLeftInTrial)
                 .activeShops(activeShops)
-                .maxShops(plan.getMaxShops())
-                .shopsUsageRatio(plan.getMaxShops() < 0 ? -1 : (double) activeShops / plan.getMaxShops())
+                .maxShops(maxShops)
+                .shopsUsageRatio(maxShops < 0 ? -1 : (double) activeShops / maxShops)
                 .activeUsers(activeUsers)
-                .maxUsers(plan.getMaxUsers())
-                .usersUsageRatio(plan.getMaxUsers() < 0 ? -1 : (double) activeUsers / plan.getMaxUsers())
-                .activeEmployees(activeUsers)           // employees are users with employee roles
-                .maxEmployees(plan.getMaxEmployees())
-                .employeesUsageRatio(plan.getMaxEmployees() < 0 ? -1 : (double) activeUsers / plan.getMaxEmployees())
+                .maxUsers(maxUsers)
+                .usersUsageRatio(maxUsers < 0 ? -1 : (double) activeUsers / maxUsers)
+                .activeEmployees(activeUsers)
+                .maxEmployees(maxEmployees)
+                .employeesUsageRatio(maxEmployees < 0 ? -1 : (double) activeUsers / maxEmployees)
                 .ordersThisMonth(ordersThisMonth)
-                .maxOrdersPerMonth(plan.getMaxOrdersPerMonth())
-                .ordersUsageRatio(plan.getMaxOrdersPerMonth() < 0 ? -1 : (double) ordersThisMonth / plan.getMaxOrdersPerMonth())
-                .advancedAnalytics(plan.isAdvancedAnalytics())
-                .exportReports(plan.isExportReports())
-                .loyaltyProgram(plan.isLoyaltyProgram())
-                .qualityControl(plan.isQualityControl())
-                .apiAccess(plan.isApiAccess())
-                .prioritySupport(plan.isPrioritySupport())
-                .customBranding(plan.isCustomBranding())
-                .multiShopReporting(plan.isMultiShopReporting())
+                .maxOrdersPerMonth(maxOrders)
+                .ordersUsageRatio(maxOrders < 0 ? -1 : (double) ordersThisMonth / maxOrders)
+                .advancedAnalytics(featureResolver.boolValue(businessId, "advancedAnalytics", false))
+                .exportReports(featureResolver.boolValue(businessId, "exportReports", false))
+                .loyaltyProgram(featureResolver.boolValue(businessId, "loyaltyProgram", false))
+                .qualityControl(featureResolver.boolValue(businessId, "qualityControl", false))
+                .apiAccess(featureResolver.boolValue(businessId, "apiAccess", false))
+                .prioritySupport(featureResolver.boolValue(businessId, "prioritySupport", false))
+                .customBranding(featureResolver.boolValue(businessId, "customBranding", false))
+                .multiShopReporting(featureResolver.boolValue(businessId, "multiShopReporting", false))
                 .build();
     }
 

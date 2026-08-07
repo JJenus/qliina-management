@@ -4,6 +4,7 @@ import com.jjenus.qliina_management.business.dto.BusinessDTO;
 import com.jjenus.qliina_management.business.dto.PlanUsageDTO;
 import com.jjenus.qliina_management.business.model.Business;
 import com.jjenus.qliina_management.business.repository.BusinessRepository;
+import com.jjenus.qliina_management.business.service.BusinessService;
 import com.jjenus.qliina_management.business.service.PlanLimitService;
 import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.MaskingUtils;
@@ -41,6 +42,7 @@ public class AdminBusinessController {
     private final BusinessRepository businessRepository;
     private final PlanLimitService   planLimitService;
     private final UserRepository     userRepository;
+    private final BusinessService    businessService;
 
     // -----------------------------------------------------------------------
     // List all businesses
@@ -106,17 +108,7 @@ public class AdminBusinessController {
             @RequestBody Map<String, String> body) {
         String tier = body.get("plan");
         if (tier == null) throw new BusinessException("'plan' field is required", "VALIDATION_ERROR", "plan");
-        Business.Plan plan;
-        try { plan = Business.Plan.valueOf(tier.toUpperCase()); }
-        catch (IllegalArgumentException e) {
-            throw new BusinessException("Invalid plan tier: " + tier, "INVALID_PLAN", "plan");
-        }
-        Business b = businessRepository.findById(businessId)
-                .orElseThrow(() -> new BusinessException("Business not found", "BUSINESS_NOT_FOUND"));
-        b.setPlan(plan);
-        businessRepository.save(b);
-        log.info("Plan changed: businessId={}, newPlan={}", businessId, plan);
-        return ResponseEntity.ok(toDTO(b));
+        return ResponseEntity.ok(businessService.changePlan(businessId, tier));
     }
 
     // -----------------------------------------------------------------------

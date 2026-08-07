@@ -270,9 +270,9 @@ class AuthIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
                 .andReturn();
         assertThat(extractString(res, "$.refreshToken")).isNotEqualTo(refreshToken);
-        // Old token is now revoked
+        // Old token is now revoked (single-session policy deletes it on rotation)
         assertProblemDetail(post("/api/v1/auth/refresh", null, Map.of("refreshToken", refreshToken)),
-                400, "REFRESH_TOKEN_INVALID");
+                400, "REFRESH_TOKEN_NOT_FOUND");
     }
 
     @Test

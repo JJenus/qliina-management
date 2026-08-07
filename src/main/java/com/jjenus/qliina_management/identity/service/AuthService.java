@@ -257,6 +257,9 @@ public class AuthService {
     }
 
     private void storeRefreshToken(User user, String token, String deviceInfo) {
+        // Enforce a single active session per user: a new login (or token
+        // rotation) revokes every previously issued refresh token for the user.
+        refreshTokenRepository.deleteByUserId(user.getId());
         RefreshToken rt = new RefreshToken();
         rt.setUser(user); rt.setTokenHash(hashToken(token));
         rt.setExpiresAt(LocalDateTime.now().plusDays(7)); rt.setDeviceInfo(deviceInfo);

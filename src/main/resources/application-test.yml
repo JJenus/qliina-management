@@ -14,6 +14,12 @@ spring:
     console:
       enabled: true
 
+# Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
+# Integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false).
+app:
+  seed-demo:
+    enabled: true
+
 logging:
   level:
     com.jjenus.qliina_management: DEBUG

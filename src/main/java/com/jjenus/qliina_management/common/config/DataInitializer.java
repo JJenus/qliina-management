@@ -1,14 +1,20 @@
 package com.jjenus.qliina_management.common.config;
 
+import com.jjenus.qliina_management.billing.model.BillingPlan;
+import com.jjenus.qliina_management.billing.model.PlanFeature;
+import com.jjenus.qliina_management.billing.model.PlanStatus;
+import com.jjenus.qliina_management.billing.model.PlanVersion;
+import com.jjenus.qliina_management.billing.repository.BillingPlanRepository;
+import com.jjenus.qliina_management.billing.repository.PlanFeatureRepository;
+import com.jjenus.qliina_management.billing.repository.PlanVersionRepository;
 import com.jjenus.qliina_management.business.model.Business;
-import com.jjenus.qliina_management.business.model.SubscriptionPlan;
 import com.jjenus.qliina_management.business.repository.BusinessRepository;
-import com.jjenus.qliina_management.business.repository.SubscriptionPlanRepository;
 import com.jjenus.qliina_management.identity.model.*;
 import com.jjenus.qliina_management.identity.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +25,7 @@ import java.util.*;
 
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
@@ -27,7 +34,9 @@ public class DataInitializer implements CommandLineRunner {
     private final UserRepository            userRepository;
     private final AuthAccountRepository     authAccountRepository;
     private final BusinessRepository        businessRepository;
-    private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final BillingPlanRepository     billingPlanRepository;
+    private final PlanVersionRepository     planVersionRepository;
+    private final PlanFeatureRepository     planFeatureRepository;
     private final PasswordEncoder           passwordEncoder;
 
     private static final UUID SYSTEM_USER_ID =
@@ -46,7 +55,7 @@ public class DataInitializer implements CommandLineRunner {
         syncRolePermissions();
         createPlatformBusiness();
         createSuperAdmin();
-        seedSubscriptionPlans();
+        seedBillingPlans();
         log.info("Database initialization complete.");
     }
 
@@ -124,6 +133,7 @@ public class DataInitializer implements CommandLineRunner {
         perm("platform.support.view",      "Support View",              "View operational data (masked PII)",     "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.audit.view",        "Platform Audit View",       "Full read-only audit access",            "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.coupons.manage",    "Manage Coupons",            "Create and manage discount coupons",     "PLATFORM_ADMIN", "GLOBAL", false);
 
         log.info("Permissions check complete. Total: {}", permissionRepository.count());
     }
@@ -472,58 +482,95 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Superadmin created: username=admin, businessId={}", platformBusinessId);
     }
 
+    // -------------------------------------------------------------------------
+    // Billing schema seeding (source of truth — MD §2 plans/versions/features)
+    // -------------------------------------------------------------------------
+
     /**
-     * Seeds the three base subscription plans (FREE / STARTER / PRO) idempotently.
-     * ENTERPRISE is not seeded — it is created manually per customer by SUPER_ADMIN.
+     * Seeds the base billing plans idempotently (FREE / STARTER / PRO).
+     * ENTERPRISE is not seeded — it is created manually per customer via the
+     * admin billing API.
      */
-    private void seedSubscriptionPlans() {
-        log.info("Seeding subscription plans...");
-        seedPlan(SubscriptionPlan.builder()
-                .tier("FREE")
-                .name("Free")
-                .description("Perfect for getting started — no credit card required.")
-                .price(BigDecimal.ZERO)
-                .maxShops(1).maxUsers(3).maxEmployees(10).maxOrdersPerMonth(500)
-                .maxServiceCatalogItems(20).maxInventoryItems(50).dataRetentionDays(365)
-                .advancedAnalytics(false).exportReports(false).loyaltyProgram(true)
-                .qualityControl(true).apiAccess(false).prioritySupport(false)
-                .customBranding(false).multiShopReporting(false).isActive(true)
-                .build());
+    private void seedBillingPlans() {
+        log.info("Seeding billing plans...");
+        seedBillingPlan("FREE", "Free",
+                "Perfect for getting started — no credit card required.",
+                BigDecimal.ZERO, features(
+                        "max_shops", "1", "max_users", "3", "max_employees", "10",
+                        "max_orders_per_month", "500", "max_service_catalog_items", "20",
+                        "max_inventory_items", "50", "data_retention_days", "365",
+                        "advancedAnalytics", "false", "exportReports", "false",
+                        "loyaltyProgram", "true", "qualityControl", "true",
+                        "apiAccess", "false", "prioritySupport", "false",
+                        "customBranding", "false", "multiShopReporting", "false"));
 
-        seedPlan(SubscriptionPlan.builder()
-                .tier("STARTER")
-                .name("Starter")
-                .description("Grow across multiple locations with core business tools.")
-                .price(new BigDecimal("9900.00"))   // ₦9,900/month
-                .maxShops(3).maxUsers(15).maxEmployees(30).maxOrdersPerMonth(2000)
-                .maxServiceCatalogItems(100).maxInventoryItems(300).dataRetentionDays(730)
-                .advancedAnalytics(false).exportReports(false).loyaltyProgram(true)
-                .qualityControl(true).apiAccess(false).prioritySupport(false)
-                .customBranding(false).multiShopReporting(true).isActive(true)
-                .build());
+        seedBillingPlan("STARTER", "Starter",
+                "Grow across multiple locations with core business tools.",
+                new BigDecimal("9900.00"), features(
+                        "max_shops", "3", "max_users", "15", "max_employees", "30",
+                        "max_orders_per_month", "2000", "max_service_catalog_items", "100",
+                        "max_inventory_items", "300", "data_retention_days", "730",
+                        "advancedAnalytics", "false", "exportReports", "false",
+                        "loyaltyProgram", "true", "qualityControl", "true",
+                        "apiAccess", "false", "prioritySupport", "false",
+                        "customBranding", "false", "multiShopReporting", "true"));
 
-        seedPlan(SubscriptionPlan.builder()
-                .tier("PRO")
-                .name("Pro")
-                .description("Unlimited growth with advanced analytics, exports and API access.")
-                .price(new BigDecimal("24900.00"))  // ₦24,900/month
-                .maxShops(-1).maxUsers(-1).maxEmployees(-1).maxOrdersPerMonth(-1)
-                .maxServiceCatalogItems(-1).maxInventoryItems(-1).dataRetentionDays(1825)
-                .advancedAnalytics(true).exportReports(true).loyaltyProgram(true)
-                .qualityControl(true).apiAccess(true).prioritySupport(true)
-                .customBranding(true).multiShopReporting(true).isActive(true)
-                .build());
+        seedBillingPlan("PRO", "Pro",
+                "Unlimited growth with advanced analytics, exports and API access.",
+                new BigDecimal("24900.00"), features(
+                        "max_shops", "-1", "max_users", "-1", "max_employees", "-1",
+                        "max_orders_per_month", "-1", "max_service_catalog_items", "-1",
+                        "max_inventory_items", "-1", "data_retention_days", "1825",
+                        "advancedAnalytics", "true", "exportReports", "true",
+                        "loyaltyProgram", "true", "qualityControl", "true",
+                        "apiAccess", "true", "prioritySupport", "true",
+                        "customBranding", "true", "multiShopReporting", "true"));
 
-        log.info("Subscription plans seeded. Total: {}", subscriptionPlanRepository.count());
+        log.info("Billing plans seeded. Total: {}", billingPlanRepository.count());
     }
 
-    /** Inserts a plan row only if no row with the same tier already exists. */
-    private void seedPlan(SubscriptionPlan plan) {
-        if (subscriptionPlanRepository.existsByTier(plan.getTier())) {
-            log.debug("Subscription plan '{}' already exists — skipping.", plan.getTier());
+    private void seedBillingPlan(String name, String displayName, String description, BigDecimal price,
+                                 Map<String, String> features) {
+        boolean exists = billingPlanRepository.findAll().stream()
+                .anyMatch(p -> p.getName().equalsIgnoreCase(name));
+        if (exists) {
+            log.debug("Billing plan '{}' already exists — skipping.", name);
             return;
         }
-        subscriptionPlanRepository.save(plan);
-        log.info("Seeded subscription plan: {}", plan.getTier());
+        LocalDateTime now = LocalDateTime.now();
+
+        BillingPlan plan = BillingPlan.builder()
+                .name(displayName).description(description).status(PlanStatus.ACTIVE).build();
+        plan.setCreatedAt(now);
+        plan.setCreatedBy(SYSTEM_USER_ID);
+        plan = billingPlanRepository.save(plan);
+
+        PlanVersion version = PlanVersion.builder()
+                .plan(plan).price(price).currency("NGN").effectiveFrom(now).build();
+        version.setCreatedAt(now);
+        version.setCreatedBy(SYSTEM_USER_ID);
+        planVersionRepository.save(version);
+
+        for (Map.Entry<String, String> e : features.entrySet()) {
+            PlanFeature feature = PlanFeature.builder()
+                    .plan(plan).featureKey(e.getKey()).value(e.getValue())
+                    .isHardLimit(HARD_LIMIT_KEYS.contains(e.getKey())).build();
+            feature.setCreatedAt(now);
+            feature.setCreatedBy(SYSTEM_USER_ID);
+            planFeatureRepository.save(feature);
+        }
+        log.info("Seeded billing plan: {} ({} {}/month)", displayName, price, "NGN");
+    }
+
+    private static final Set<String> HARD_LIMIT_KEYS = Set.of(
+            "max_shops", "max_users", "max_employees", "max_orders_per_month",
+            "max_service_catalog_items", "max_inventory_items", "data_retention_days");
+
+    private Map<String, String> features(String... keyValues) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            map.put(keyValues[i], keyValues[i + 1]);
+        }
+        return map;
     }
 }

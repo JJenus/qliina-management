@@ -1,5 +1,7 @@
 package com.jjenus.qliina_management.business.service;
 
+import com.jjenus.qliina_management.billing.service.BillingProvisioningService;
+import com.jjenus.qliina_management.billing.service.SubscriptionService;
 import com.jjenus.qliina_management.business.dto.*;
 import com.jjenus.qliina_management.business.model.Business;
 import com.jjenus.qliina_management.business.model.Shop;
@@ -57,6 +59,8 @@ public class BusinessService {
     private final PaymentMethodService          paymentMethodInitializer;
     private final ServiceCatalogService         serviceCatalogService;
     private final NotificationPreferenceService notificationPreferenceService;
+    private final BillingProvisioningService    billingProvisioningService;
+    private final SubscriptionService           subscriptionService;
 
     // -------------------------------------------------------------------------
     // Open registration
@@ -118,7 +122,9 @@ public class BusinessService {
         final UUID businessId = business.getId();
         
         paymentMethodInitializer.createDefaultMethodsForBusiness(businessId);
-       
+        
+        billingProvisioningService.provisionTrial(businessId, business.getTrialEndsAt());
+
         serviceCatalogService.createDefaultsForBusiness(businessId);
 
         // 6. Create initial Shop
@@ -256,26 +262,19 @@ public class BusinessService {
 
     /**
      * Self-service plan change — called by business owner via settings.
-     * Validates the requested plan exists as a valid Business.Plan value,
-     * then persists the update.  The plan limit cache is automatically
-     * re-evaluated on the next request via PlanLimitService.
+     * Delegates to the billing engine (MD §4.4) which handles upgrade/proration
+     * vs. deferred downgrade, then syncs the legacy Business.plan enum for
+     * backward compatibility with existing frontends.
      */
     @Transactional
     public BusinessDTO changePlan(UUID businessId, String requestedPlan) {
-        Business.Plan newPlan;
-        try {
-            newPlan = Business.Plan.valueOf(requestedPlan.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException(
-                "Invalid plan '" + requestedPlan + "'. Valid values: "
-                + Arrays.stream(Business.Plan.values()).map(Enum::name).collect(Collectors.joining(", ")),
-                "INVALID_PLAN", "plan");
-        }
+        subscriptionService.changePlan(businessId, requestedPlan);
         Business b = findOrThrow(businessId);
-        if (b.getPlan() == newPlan) {
-            throw new BusinessException("Business is already on plan '" + newPlan + "'", "SAME_PLAN", "plan");
+        try {
+            b.setPlan(Business.Plan.valueOf(requestedPlan.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            log.warn("Plan '{}' has no Business.Plan enum; keeping legacy plan as-is", requestedPlan);
         }
-        b.setPlan(newPlan);
         b.setUpdatedAt(LocalDateTime.now());
         return toDTO(businessRepository.save(b));
     }

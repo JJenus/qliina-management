@@ -86,14 +86,14 @@ class BusinessIntegrationTest extends BaseIntegrationTest {
         get("/api/v1/subscription/plans", null)
                 .andExpect(status().isUnauthorized());
 
-        // 3 plans are seeded (FREE/STARTER/PRO); other tests in this class may
-        // have created extra active plans in the shared context, so assert the
-        // seeded tiers are present rather than an exact count.
+        // Billing plans are seeded (Free/Starter/Pro); other tests in this class
+        // may have created extra active plans in the shared context, so assert the
+        // seeded plans are present rather than an exact count.
         AuthContext ctx = registerBusinessAndOwner();
         get("/api/v1/subscription/plans", ctx.accessToken())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(3)))
-                .andExpect(jsonPath("$[*].tier", org.hamcrest.Matchers.hasItems("FREE", "STARTER", "PRO")));
+                .andExpect(jsonPath("$[*].name", org.hamcrest.Matchers.hasItems("Free", "Starter", "Pro")));
     }
 
     @Test
@@ -154,50 +154,40 @@ class BusinessIntegrationTest extends BaseIntegrationTest {
     @Test
     void adminCreatePlan_successAndDuplicate() throws Exception {
         String admin = adminToken();
-        String tier = "TEST" + random().toUpperCase();
+        String name = "TestPlan" + random().toUpperCase();
         Map<String, Object> body = new java.util.HashMap<>();
-        body.put("tier", tier);
-        body.put("name", "Test Plan");
+        body.put("name", name);
         body.put("description", "created by integration test");
         body.put("price", 1999);
-        body.put("maxShops", 5);
-        body.put("maxUsers", 10);
-        body.put("maxEmployees", 20);
-        body.put("maxOrdersPerMonth", 1000);
-        body.put("maxServiceCatalogItems", 50);
-        body.put("maxInventoryItems", 100);
-        body.put("dataRetentionDays", 365);
-        body.put("advancedAnalytics", false);
-        body.put("exportReports", false);
-        body.put("loyaltyProgram", true);
-        body.put("qualityControl", true);
-        body.put("apiAccess", false);
-        body.put("prioritySupport", false);
-        body.put("customBranding", false);
-        body.put("multiShopReporting", false);
-        body.put("isActive", true);
+        body.put("currency", "NGN");
+        body.put("features", List.of(
+                Map.of("featureKey", "max_shops", "value", "5", "isHardLimit", true),
+                Map.of("featureKey", "max_users", "value", "10", "isHardLimit", true),
+                Map.of("featureKey", "advancedAnalytics", "value", "false", "isHardLimit", false)));
 
-        MvcResult res = post("/api/v1/admin/subscription/plans", admin, body)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tier").value(tier))
+        MvcResult res = post("/api/v1/admin/billing/plans", admin, body)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value(name))
+                .andExpect(jsonPath("$.versions[0].price").value(1999))
                 .andReturn();
         UUID planId = extractUuid(res, "$.id");
 
-        // Duplicate tier
-        assertProblemDetail(post("/api/v1/admin/subscription/plans", admin, body), 400, "PLAN_EXISTS");
+        // Duplicate name
+        assertProblemDetail(post("/api/v1/admin/billing/plans", admin, body), 400, "PLAN_EXISTS");
 
-        // Update the created plan
-        body.put("price", 2999);
-        put("/api/v1/admin/subscription/plans/" + planId, admin, body)
+        // Add a new priced version (grandfathering — never mutate an existing price)
+        post("/api/v1/admin/billing/plans/" + planId + "/versions", admin,
+                Map.of("price", 2999, "currency", "NGN"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.price").value(2999));
+                .andExpect(jsonPath("$.versions.length()").value(2))
+                .andExpect(jsonPath("$.versions[1].price").value(2999));
     }
 
     @Test
     void adminCreatePlan_tenantDenied() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
-        assertProblemDetail(post("/api/v1/admin/subscription/plans", ctx.accessToken(),
-                Map.of("tier", "X" + random().toUpperCase())), 403, "ACCESS_DENIED");
+        assertProblemDetail(post("/api/v1/admin/billing/plans", ctx.accessToken(),
+                Map.of("name", "X" + random().toUpperCase(), "price", 1000)), 403, "ACCESS_DENIED");
     }
 
     // ---------------------------------------------------------------------

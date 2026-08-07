@@ -81,6 +81,14 @@ public class EmployeeService {
         if (activeShift.isPresent()) {
             throw new BusinessException("Employee already has an active shift", "ACTIVE_SHIFT_EXISTS");
         }
+        // A suspended shift is still an active shift: the employee must resume
+        // it instead of starting a new one, otherwise two active shifts exist.
+        Optional<EmployeeShift> suspendedShift = shiftRepository.findSuspendedShift(employeeId);
+        if (suspendedShift.isPresent()) {
+            throw new BusinessException(
+                    "Employee has a suspended shift. Resume it before clocking in.",
+                    "SHIFT_SUSPENDED");
+        }
         
         LocalDateTime now = TimezoneContext.now();
         LocalDate today = now.toLocalDate();
