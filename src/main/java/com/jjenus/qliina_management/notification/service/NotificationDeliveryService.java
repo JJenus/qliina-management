@@ -148,6 +148,34 @@ public class NotificationDeliveryService {
     }
 
     // ---------------------------------------------------------------------
+    // Interaction tracking (open / click)
+    // ---------------------------------------------------------------------
+
+    @Transactional
+    public void open(UUID deliveryId) {
+        NotificationDelivery delivery = deliveryRepository.findByIdForUpdate(deliveryId).orElse(null);
+        if (delivery == null || delivery.getStatus() == NotificationDeliveryStatus.PENDING) return;
+        recordEvent(delivery, NotificationDeliveryEventType.OPENED, "opened by recipient");
+    }
+
+    @Transactional
+    public void click(UUID deliveryId) {
+        NotificationDelivery delivery = deliveryRepository.findByIdForUpdate(deliveryId).orElse(null);
+        if (delivery == null || delivery.getStatus() == NotificationDeliveryStatus.PENDING) return;
+        recordEvent(delivery, NotificationDeliveryEventType.CLICKED, "link clicked");
+    }
+
+    /** Records an OPENED event on every sent delivery of a notification (in-app read model). */
+    @Transactional
+    public void recordOpenedForNotification(UUID notificationId) {
+        for (NotificationDelivery d : deliveryRepository.findByNotificationIdOrderByCreatedAtAsc(notificationId)) {
+            if (d.getStatus() == NotificationDeliveryStatus.SENT) {
+                recordEvent(d, NotificationDeliveryEventType.OPENED, "marked read in-app");
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------
 

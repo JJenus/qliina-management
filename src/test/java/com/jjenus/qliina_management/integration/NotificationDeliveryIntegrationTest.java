@@ -393,4 +393,80 @@ class NotificationDeliveryIntegrationTest extends BaseIntegrationTest {
         assertEquals(NotificationDeliveryStatus.SENT,
                 singleDelivery(hubId, Notification.NotificationChannel.SMS).getStatus());
     }
+
+    // ---------------------------------------------------------------------
+    // Broadcast (outbox row with no recipient)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void broadcastRow_fansOutToAllBusinessUsers() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        setupSms(ctx);
+
+        NotificationOutbox row = outboxService.enqueue(ctx.businessId(), null, null,
+                Notification.NotificationType.ALERT, Notification.NotificationChannel.SMS, false,
+                Notification.NotificationPriority.NORMAL, "Broadcast title", "Broadcast body", null, null);
+        assertNull(row.getUserId());
+
+        drainOutbox();
+
+        NotificationOutbox processed = outboxRepository.findById(row.getId()).orElseThrow();
+        assertEquals(NotificationOutboxStatus.PROCESSED, processed.getStatus());
+
+        // Owner is the only business user -> exactly one hub, one delivery.
+        assertEquals(1, notificationRepository.findAll().stream()
+                .filter(n -> n.getBusinessId().equals(ctx.businessId())
+                        && n.getUserId().equals(ctx.userId())).count());
+        UUID hubId = hubNotificationId(ctx);
+        NotificationDelivery delivery = singleDelivery(hubId, Notification.NotificationChannel.SMS);
+        assertEquals(NotificationDeliveryStatus.SENT, delivery.getStatus());
+        assertEquals(hubId, delivery.getNotificationId());
+    }
+
+    // ---------------------------------------------------------------------
+    // Interaction tracking (open / click)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void openAndClick_recordEventsOnDelivery() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        setupSms(ctx);
+        sendSms(ctx);
+        drainOutbox();
+
+        UUID hubId = hubNotificationId(ctx);
+        NotificationDelivery delivery = singleDelivery(hubId, Notification.NotificationChannel.SMS);
+        UUID deliveryId = delivery.getId();
+
+        post(base(ctx.businessId()) + "/deliveries/" + deliveryId + "/open", ctx.accessToken(), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+        post(base(ctx.businessId()) + "/deliveries/" + deliveryId + "/click", ctx.accessToken(), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        List<NotificationDeliveryEvent> events = eventRepository.findAllByDeliveryIdOrderByOccurredAtAsc(deliveryId);
+        assertTrue(events.stream().anyMatch(e -> e.getEventType() == NotificationDeliveryEventType.OPENED));
+        assertTrue(events.stream().anyMatch(e -> e.getEventType() == NotificationDeliveryEventType.CLICKED));
+    }
+
+    @Test
+    void markAsRead_recordsOpenedOnDeliveries() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        setupSms(ctx);
+        sendSms(ctx);
+        drainOutbox();
+
+        UUID hubId = hubNotificationId(ctx);
+        NotificationDelivery delivery = singleDelivery(hubId, Notification.NotificationChannel.SMS);
+        assertEquals(NotificationDeliveryStatus.SENT, delivery.getStatus());
+
+        post(base(ctx.businessId()) + "/mark-read", ctx.accessToken(),
+                java.util.Map.of("notificationIds", List.of(hubId.toString())))
+                .andExpect(status().isOk());
+
+        List<NotificationDeliveryEvent> events =
+                eventRepository.findAllByDeliveryIdOrderByOccurredAtAsc(delivery.getId());
+        assertTrue(events.stream().anyMatch(e -> e.getEventType() == NotificationDeliveryEventType.OPENED));
+    }
 }

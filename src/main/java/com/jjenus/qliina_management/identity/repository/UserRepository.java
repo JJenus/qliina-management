@@ -30,6 +30,9 @@ Optional<User> findByIdentity(@Param("identity") String identity);
     
     @Query("SELECT u FROM User u WHERE u.businessId = :businessId")
     Page<User> findByBusinessId(@Param("businessId") UUID businessId, Pageable pageable);
+
+    @Query("SELECT u FROM User u WHERE u.businessId = :businessId")
+    List<User> findAllByBusinessId(@Param("businessId") UUID businessId);
     
     @Query("SELECT u FROM User u WHERE u.businessId = :businessId AND " +
            "(LOWER(u.firstName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +

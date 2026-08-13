@@ -43,6 +43,9 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             @Param("maxRetry") int maxRetry,
             @Param("before") LocalDateTime before);
 
+    @Query("SELECT n.id FROM Notification n WHERE n.userId = :userId AND n.status <> 'READ'")
+    List<UUID> findUnreadIdsByUserId(@Param("userId") UUID userId);
+
     @Query("SELECT COUNT(n) FROM Notification n "
          + "WHERE n.userId = :userId AND n.status = 'DELIVERED' AND n.readAt IS NULL")
     long countUnreadByUserId(@Param("userId") UUID userId);

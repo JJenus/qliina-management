@@ -28,6 +28,7 @@ public class NotificationOrchestrator {
     private final NotificationTemplateService templateService;
     private final NotificationLogService logService;
     private final NotificationDeviceService deviceService;
+    private final NotificationDeliveryService deliveryService;
     
     // ====== Notification Operations ======
 
@@ -50,11 +51,25 @@ public class NotificationOrchestrator {
     @Transactional
     public void markAsRead(MarkReadRequest request, UUID userId) {
         if (Boolean.TRUE.equals(request.getMarkAll())) {
+            List<UUID> ids = notificationRepository.findUnreadIdsByUserId(userId);
             notificationRepository.markAllAsRead(userId, LocalDateTime.now());
+            ids.forEach(deliveryService::recordOpenedForNotification);
         } else if (request.getNotificationIds() != null) {
-            request.getNotificationIds().forEach(id -> 
-                notificationRepository.markAsRead(id, LocalDateTime.now()));
+            request.getNotificationIds().forEach(id -> {
+                notificationRepository.markAsRead(id, LocalDateTime.now());
+                deliveryService.recordOpenedForNotification(id);
+            });
         }
+    }
+
+    @Transactional
+    public void recordOpen(UUID businessId, UUID deliveryId) {
+        deliveryService.open(deliveryId);
+    }
+
+    @Transactional
+    public void recordClick(UUID businessId, UUID deliveryId) {
+        deliveryService.click(deliveryId);
     }
     
     @Transactional

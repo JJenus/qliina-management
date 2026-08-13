@@ -51,26 +51,31 @@ public class NotificationOutboxProcessor {
         row.setLockedBy(null);
         outboxRepository.save(row);
 
-        if (row.getUserId() == null) {
-            // Broadcast sends are not supported yet — park rather than loop.
-            outboxService.markProcessed(outboxId);
-            return;
-        }
-        User user = userRepository.findById(row.getUserId()).orElse(null);
-        if (user == null) {
-            outboxService.markProcessed(outboxId);
-            return;
+        if (row.getUserId() != null) {
+            User user = userRepository.findById(row.getUserId()).orElse(null);
+            if (user == null) {
+                outboxService.markProcessed(outboxId);
+                return;
+            }
+            processForUser(row, user);
+        } else {
+            // Broadcast row (no recipient): fan out to every user of the business.
+            for (User user : userRepository.findAllByBusinessId(row.getBusinessId())) {
+                processForUser(row, user);
+            }
         }
 
+        outboxService.markProcessed(outboxId);
+    }
+
+    /** Creates the hub + deliveries + first dispatch for a single recipient. */
+    private void processForUser(NotificationOutbox row, User user) {
         List<ResolvedChannel> channels = resolveChannels(row, user);
-        if (channels.isEmpty()) {
-            outboxService.markProcessed(outboxId);
-            return;
-        }
+        if (channels.isEmpty()) return;
 
         Notification.NotificationChannel primary =
                 row.getChannel() != null ? row.getChannel() : channels.get(0).channel();
-        Notification hub = buildHub(row, primary);
+        Notification hub = buildHub(row, user, primary);
         hub = notificationRepository.save(hub);
 
         for (ResolvedChannel rc : channels) {
@@ -78,8 +83,6 @@ public class NotificationOutboxProcessor {
                     row.getBusinessId(), hub.getId(), rc.channel(), rc.deviceId(), rc.recipient());
             deliveryService.dispatch(delivery.getId());
         }
-
-        outboxService.markProcessed(outboxId);
     }
 
     /**
@@ -125,10 +128,10 @@ public class NotificationOutboxProcessor {
         return !userDeviceRepository.findByUserIdAndIsActiveTrue(userId).isEmpty();
     }
 
-    private Notification buildHub(NotificationOutbox row, Notification.NotificationChannel channel) {
+    private Notification buildHub(NotificationOutbox row, User user, Notification.NotificationChannel channel) {
         Notification hub = new Notification();
         hub.setBusinessId(row.getBusinessId());
-        hub.setUserId(row.getUserId());
+        hub.setUserId(user.getId());
         hub.setTemplateId(row.getTemplateId());
         hub.setType(row.getType());
         hub.setChannel(channel);

@@ -128,6 +128,48 @@ public class NotificationController {
         notificationOrchestrator.markAsRead(request, userId);
         return ResponseEntity.ok(SuccessResponse.of("Notifications marked as read"));
     }
+
+    @Operation(
+        summary = "Record delivery opened",
+        description = "Appends an OPENED event to a delivery's event stream "
+                + "(email open pixel, in-app read, webhook)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Event recorded"),
+        @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/deliveries/{deliveryId}/open")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'notification.view')")
+    public ResponseEntity<SuccessResponse> recordDeliveryOpened(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+            @Parameter(description = "Delivery ID", required = true)
+            @PathVariable UUID deliveryId) {
+        notificationOrchestrator.recordOpen(businessId, deliveryId);
+        return ResponseEntity.ok(SuccessResponse.of("Delivery marked as opened"));
+    }
+
+    @Operation(
+        summary = "Record delivery link clicked",
+        description = "Appends a CLICKED event to a delivery's event stream "
+                + "(email/web link click, deep link, webhook)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Event recorded"),
+        @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/deliveries/{deliveryId}/click")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'notification.view')")
+    public ResponseEntity<SuccessResponse> recordDeliveryClicked(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+            @Parameter(description = "Delivery ID", required = true)
+            @PathVariable UUID deliveryId) {
+        notificationOrchestrator.recordClick(businessId, deliveryId);
+        return ResponseEntity.ok(SuccessResponse.of("Delivery link clicked"));
+    }
     
     @Operation(
         summary = "Send notification",
