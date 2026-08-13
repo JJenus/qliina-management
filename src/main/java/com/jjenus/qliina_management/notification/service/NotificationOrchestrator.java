@@ -59,14 +59,8 @@ public class NotificationOrchestrator {
     
     @Transactional
     public NotificationDTO sendNotification(UUID businessId, SendNotificationRequest request) {
-        List<Notification> notifications = notificationSender.prepareNotifications(businessId, request);
-        
-        if (request.getScheduledFor() == null || request.getScheduledFor().isBefore(LocalDateTime.now())) {
-            notifications.forEach(notification -> 
-                notificationSender.deliver(notification.getId()));
-        }
-        
-        return notifications.isEmpty() ? null : mapToDTO(notifications.get(0));
+        NotificationSender.SendResult result = notificationSender.send(businessId, request);
+        return result.first() == null ? null : mapToDTO(result.first());
     }
     
     // ====== Template Operations ======

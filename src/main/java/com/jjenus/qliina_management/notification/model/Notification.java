@@ -25,7 +25,10 @@ public class Notification extends BaseTenantEntity {
     
     @Column(name = "user_id")
     private UUID userId; // null for broadcast notifications
-    
+
+    @Column(name = "template_id")
+    private UUID templateId; // null for ad-hoc sends
+
     @Column(name = "type", nullable = false)
     @Enumerated(EnumType.STRING)
     private NotificationType type;

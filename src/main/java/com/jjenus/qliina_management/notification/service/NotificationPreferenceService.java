@@ -55,6 +55,19 @@ public class NotificationPreferenceService {
                 .orElse(true);
     }
 
+    /**
+     * Centralized preference check — every fan-out path (outbox worker, bulk
+     * jobs, immediate in-app sends) MUST go through this instead of reading
+     * preferences inline, so opt-out can never drift between senders (doc §3).
+     * Opt-out system: a missing row defaults to enabled. Mandatory templates
+     * bypass this entirely at the fan-out layer.
+     */
+    public boolean resolvePreference(UUID businessId, UUID userId,
+                                     Notification.NotificationType type,
+                                     Notification.NotificationChannel channel) {
+        return isOptedIn(userId, channel, type);
+    }
+
     private NotificationPreferenceDTO toDTO(UserNotificationPreference p) {
         return NotificationPreferenceDTO.builder()
                 .id(p.getId())

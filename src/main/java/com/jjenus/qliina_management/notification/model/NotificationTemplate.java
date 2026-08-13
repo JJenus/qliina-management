@@ -48,7 +48,10 @@ public class NotificationTemplate extends BaseTenantEntity {
     
     @Column(name = "is_active")
     private Boolean isActive = true;
-    
+
+    @Column(name = "is_mandatory", nullable = false)
+    private Boolean isMandatory = false;
+
     @Column(name = "business_id")
     private UUID businessId; // null for system templates
     

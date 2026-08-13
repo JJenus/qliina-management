@@ -18,7 +18,12 @@ spring:
 # Integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false).
 app:
   seed-demo:
-    enabled: true
+    enabled: true   # integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false)
+  notification:
+    scheduler:
+      # Notification schedulers are driven deterministically from tests;
+      # disable the background jobs so they never fire mid-suite.
+      enabled: false
 
 logging:
   level:
