@@ -4,6 +4,7 @@ import com.jjenus.qliina_management.billing.model.PlanFeature;
 import com.jjenus.qliina_management.billing.model.PlanStatus;
 import com.jjenus.qliina_management.billing.model.Subscription;
 import com.jjenus.qliina_management.billing.model.SubscriptionFeature;
+import com.jjenus.qliina_management.billing.model.SubscriptionStatus;
 import com.jjenus.qliina_management.billing.model.BillingPlan;
 import com.jjenus.qliina_management.billing.repository.BillingPlanRepository;
 import com.jjenus.qliina_management.billing.repository.PlanFeatureRepository;
@@ -14,7 +15,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -22,6 +25,10 @@ import java.util.stream.Collectors;
  * Resolves the EFFECTIVE feature value for a business: plan feature, overridden
  * by a per-subscription override (MD §2 subscription_features). This is what
  * enforcement (PlanLimitService) queries — never the plan name.
+ *
+ * <p>Every new business starts with a 30-day trial during which ALL features
+ * are enabled: hard limits resolve to unlimited ({@code -1}) and feature flags
+ * to {@code true}. Explicit per-subscription overrides always take precedence.
  */
 @Slf4j
 @Service
@@ -33,18 +40,32 @@ public class BillingFeatureResolver {
     private final PlanFeatureRepository planFeatureRepository;
     private final SubscriptionFeatureRepository subscriptionFeatureRepository;
 
+    /** Numeric hard-limit keys — during trial these resolve to unlimited. */
+    private static final Set<String> HARD_LIMIT_KEYS = Set.of(
+            "max_shops", "max_users", "max_employees", "max_orders_per_month",
+            "max_service_catalog_items", "max_inventory_items", "data_retention_days");
+
     @Transactional(readOnly = true)
     public String featureValue(UUID businessId, String featureKey) {
-        Map<String, String> planValues = planValues(businessId);
         Map<String, String> overrideValues = overrideValues(businessId);
-        return overrideValues.getOrDefault(featureKey, planValues.get(featureKey));
+        if (overrideValues.containsKey(featureKey)) {
+            return overrideValues.get(featureKey);
+        }
+        if (isInTrial(businessId)) {
+            return trialValue(featureKey);
+        }
+        return planValues(businessId).get(featureKey);
     }
 
     @Transactional(readOnly = true)
     public Map<String, String> allFeatures(UUID businessId) {
-        Map<String, String> planValues = planValues(businessId);
-        planValues.putAll(overrideValues(businessId));
-        return planValues;
+        Map<String, String> values = planValues(businessId);
+        Map<String, String> overrides = overrideValues(businessId);
+        values.putAll(overrides);
+        if (isInTrial(businessId)) {
+            values.replaceAll((key, value) -> overrides.containsKey(key) ? value : trialValue(key));
+        }
+        return values;
     }
 
     /** Typed helpers — feature values are strings per the schema. */
@@ -93,6 +114,20 @@ public class BillingFeatureResolver {
         } catch (BusinessException e) {
             return null;
         }
+    }
+
+    /** True while the business's trial subscription is still running. */
+    private boolean isInTrial(UUID businessId) {
+        Subscription sub = findLiveOrNull(businessId);
+        return sub != null
+                && sub.getStatus() == SubscriptionStatus.TRIALING
+                && sub.getTrialEndsAt() != null
+                && sub.getTrialEndsAt().isAfter(LocalDateTime.now());
+    }
+
+    /** All-features value used during the free trial: unlimited limits, flags on. */
+    private String trialValue(String featureKey) {
+        return HARD_LIMIT_KEYS.contains(featureKey) ? "-1" : "true";
     }
 
     private UUID freePlanId() {

@@ -2,6 +2,9 @@ package com.jjenus.qliina_management.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
+import com.jjenus.qliina_management.billing.model.Subscription;
+import com.jjenus.qliina_management.billing.repository.SubscriptionRepository;
+import com.jjenus.qliina_management.billing.service.SubscriptionService;
 import com.jjenus.qliina_management.employee.service.IdleDetectionService;
 import com.jjenus.qliina_management.employee.service.MidnightAutoCloseService;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +24,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -57,6 +61,12 @@ public abstract class BaseIntegrationTest {
 
     @MockitoBean
     protected MidnightAutoCloseService midnightAutoCloseService;
+
+    @Autowired
+    protected SubscriptionService subscriptionService;
+
+    @Autowired
+    protected SubscriptionRepository subscriptionRepository;
 
     protected static final AtomicLong counter = new AtomicLong();
 
@@ -125,6 +135,16 @@ public abstract class BaseIntegrationTest {
 
     protected String adminToken() throws Exception {
         return loginToken("admin", "Admin@123");
+    }
+
+    /**
+     * Ends a business's free trial so plan limits (FREE defaults) apply instead
+     * of the trial-all-features grant.
+     */
+    protected void expireTrial(UUID businessId) {
+        Subscription sub = subscriptionService.getLiveSubscription(businessId);
+        sub.setTrialEndsAt(LocalDateTime.now().minusDays(1));
+        subscriptionRepository.save(sub);
     }
 
     protected String random() {

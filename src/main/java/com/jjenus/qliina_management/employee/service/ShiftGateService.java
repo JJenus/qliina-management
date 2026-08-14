@@ -42,7 +42,7 @@ public class ShiftGateService {
     @Transactional
     public void requireClockedIn(UUID workerId, String role, UUID businessId) {
         if (isClockRequired(role, businessId)) {
-            shiftRepository.findActiveShift(workerId)
+            shiftRepository.findActiveShiftUnlocked(workerId)
                 .orElseThrow(() -> new BusinessException(
                     "You must clock in before you can start working.",
                     "NOT_CLOCKED_IN"));

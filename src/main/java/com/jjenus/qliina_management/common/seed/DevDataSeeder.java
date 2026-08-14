@@ -1,4 +1,20 @@
-package com.jjenus.qliina_management.common.config;
+package com.jjenus.qliina_management.common.seed;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.jjenus.qliina_management.business.dto.BusinessRegistrationResponse;
 import com.jjenus.qliina_management.business.dto.CreateBusinessRequest;
@@ -27,6 +43,7 @@ import com.jjenus.qliina_management.identity.model.UserRole;
 import com.jjenus.qliina_management.identity.repository.AuthAccountRepository;
 import com.jjenus.qliina_management.identity.repository.RoleRepository;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
+import com.jjenus.qliina_management.identity.service.BusinessConfigService;
 import com.jjenus.qliina_management.inventory.model.InventoryItem;
 import com.jjenus.qliina_management.inventory.model.ShopStock;
 import com.jjenus.qliina_management.inventory.repository.InventoryItemRepository;
@@ -42,22 +59,9 @@ import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import com.jjenus.qliina_management.payment.repository.PaymentMethodRepository;
 import com.jjenus.qliina_management.quality.model.QualityCheck;
 import com.jjenus.qliina_management.quality.repository.QualityCheckRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Profile;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Seeds a realistic demo tenant ("Qliina Demo Laundry") on the H2-backed
@@ -81,7 +85,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @org.springframework.core.annotation.Order(2)
-@Profile({"test", "seed"})
+@Profile({"dev", "test", "seed"})
 @ConditionalOnProperty(prefix = "app.seed-demo", name = "enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 public class DevDataSeeder implements CommandLineRunner {
@@ -108,8 +112,10 @@ public class DevDataSeeder implements CommandLineRunner {
     private final QualityCheckRepository qualityCheckRepository;
     private final ExpenseRepository expenseRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final BusinessConfigService businessConfigService;
 
     private UUID businessId;
+    private ZoneId seedZone = ZoneId.systemDefault();
     private List<Shop> shops = new ArrayList<>();
     private List<ServiceType> services = new ArrayList<>();
     private List<GarmentType> garments = new ArrayList<>();
@@ -130,6 +136,12 @@ public class DevDataSeeder implements CommandLineRunner {
         long start = System.currentTimeMillis();
 
         seedBusinessAndOwner();
+        try {
+            String tz = businessConfigService.getConfig(businessId).getTimezone();
+            if (tz != null && !tz.isBlank()) seedZone = ZoneId.of(tz);
+        } catch (Exception e) {
+            log.warn("Failed to resolve demo business timezone, using JVM default: {}", e.getMessage());
+        }
         seedShops();
         seedStaff();
         seedCustomers();
@@ -610,7 +622,7 @@ public class DevDataSeeder implements CommandLineRunner {
     }
 
     private void createShift(UUID employeeId, Shop shop, String status, int daysAgo, boolean fullDay) {
-        LocalDate date = LocalDate.now().minusDays(daysAgo);
+        LocalDate date = LocalDate.now(seedZone).minusDays(daysAgo);
         EmployeeShift shift = new EmployeeShift();
         shift.setBusinessId(businessId);
         shift.setEmployeeId(employeeId);
@@ -623,7 +635,7 @@ public class DevDataSeeder implements CommandLineRunner {
             shift.setActualEnd(date.atTime(fullDay ? 17 : 13, 0));
         } else {
             shift.setActualStart(date.atTime(8, 5));
-            shift.setLastActivityAt(LocalDateTime.now());
+            shift.setLastActivityAt(LocalDateTime.now(seedZone));
         }
         shift.setStatus(EmployeeShift.ShiftStatus.valueOf(status));
         shift.setTotalWorkMinutes(fullDay ? 535 : 295);

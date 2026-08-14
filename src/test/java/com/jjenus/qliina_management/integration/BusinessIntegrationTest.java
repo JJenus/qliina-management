@@ -98,15 +98,17 @@ class BusinessIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void getUsageSummary_ownerSeesFreePlanUsage() throws Exception {
+        // Fresh businesses are on a 30-day trial with all features enabled, so
+        // the usage summary reports unlimited limits (-1) during the trial.
         AuthContext ctx = registerBusinessAndOwner();
         get("/api/v1/" + ctx.businessId() + "/subscription", ctx.accessToken())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tier").value("FREE"))
                 .andExpect(jsonPath("$.status").value("TRIAL"))
                 .andExpect(jsonPath("$.activeShops").value(1))
-                .andExpect(jsonPath("$.maxShops").value(1))
+                .andExpect(jsonPath("$.maxShops").value(-1))
                 .andExpect(jsonPath("$.activeUsers").value(1))
-                .andExpect(jsonPath("$.maxUsers").value(3))
+                .andExpect(jsonPath("$.maxUsers").value(-1))
                 .andExpect(jsonPath("$.ordersThisMonth").value(0));
     }
 
@@ -196,8 +198,10 @@ class BusinessIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createShop_freePlanLimitThenUpgradeThenSuccess() throws Exception {
-        // On the FREE plan (maxShops=1) a second shop hits the hard limit.
+        // During the trial all features are enabled, so the FREE plan hard limit
+        // (maxShops=1) only applies once the trial has expired.
         AuthContext ctx = registerBusinessAndOwner();
+        expireTrial(ctx.businessId());
         Map<String, Object> shopBody = Map.of(
                 "name", "Second Branch",
                 "code", "BR" + random().substring(0, 4).toUpperCase());

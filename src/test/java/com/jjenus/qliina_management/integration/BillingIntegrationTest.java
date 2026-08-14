@@ -484,11 +484,14 @@ class BillingIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void featureResolver_planLimitsAndOverrides() throws Exception {
+        // A fresh business is on a 30-day trial → all features enabled: limits
+        // are unlimited and feature flags are true.
         AuthContext ctx = registerBusinessAndOwner();
-        assertThat(featureResolver.intValue(ctx.businessId(), "max_shops", -1)).isEqualTo(1);
-        assertThat(featureResolver.intValue(ctx.businessId(), "max_users", -1)).isEqualTo(3);
-        assertThat(featureResolver.boolValue(ctx.businessId(), "advancedAnalytics", true)).isFalse();
+        assertThat(featureResolver.intValue(ctx.businessId(), "max_shops", -1)).isEqualTo(-1);
+        assertThat(featureResolver.intValue(ctx.businessId(), "max_users", -1)).isEqualTo(-1);
+        assertThat(featureResolver.boolValue(ctx.businessId(), "advancedAnalytics", false)).isTrue();
 
+        // An explicit per-subscription override takes precedence over the trial grant.
         Subscription sub = subscriptionService.getLiveSubscription(ctx.businessId());
         subscriptionFeatureRepository.save(SubscriptionFeature.builder()
                 .subscription(sub)
@@ -496,8 +499,14 @@ class BillingIntegrationTest extends BaseIntegrationTest {
                 .value("99")
                 .overriddenAt(LocalDateTime.now())
                 .build());
-
         assertThat(featureResolver.intValue(ctx.businessId(), "max_shops", -1)).isEqualTo(99);
+
+        // Once the trial expires the FREE plan defaults apply for un-overridden
+        // keys; the explicit override still wins for max_shops.
+        expireTrial(ctx.businessId());
+        assertThat(featureResolver.intValue(ctx.businessId(), "max_shops", -1)).isEqualTo(99);
+        assertThat(featureResolver.intValue(ctx.businessId(), "max_users", -1)).isEqualTo(3);
+        assertThat(featureResolver.boolValue(ctx.businessId(), "advancedAnalytics", false)).isFalse();
     }
 
     // ---------------------------------------------------------------------

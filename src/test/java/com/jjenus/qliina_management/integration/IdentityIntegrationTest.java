@@ -206,8 +206,11 @@ class IdentityIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createUser_planLimitExceeded() throws Exception {
-        // FREE plan allows maxUsers=3; the owner counts as 1, so only 2 more.
+        // During the trial all features are enabled, so the FREE plan limit
+        // (maxUsers=3) only applies once the trial has expired; the owner counts
+        // as 1, so only 2 more users fit.
         AuthContext ctx = registerBusinessAndOwner();
+        expireTrial(ctx.businessId());
         for (int i = 0; i < 2; i++) {
             Map<String, Object> body = createUserBody("pl" + i + "_" + random(), "a" + random() + "@test.com",
                     newPhone(), DEFAULT_PASSWORD, DEFAULT_PASSWORD);

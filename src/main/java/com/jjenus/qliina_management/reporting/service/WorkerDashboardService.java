@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.reporting.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.common.TimezoneContext;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import com.jjenus.qliina_management.employee.repository.EmployeeShiftRepository;
 import com.jjenus.qliina_management.identity.model.User;
@@ -201,8 +202,8 @@ public class WorkerDashboardService {
         }
 
         EmployeeShift shift = activeShift.get();
-        LocalDateTime now = LocalDateTime.now();
-        long minutesElapsed = Duration.between(shift.getActualStart(), now).toMinutes();
+        LocalDateTime now = TimezoneContext.now();
+        long minutesElapsed = Math.max(0, Duration.between(shift.getActualStart(), now).toMinutes());
 
         return WorkerDashboardDTO.ShiftInfoDTO.builder()
                 .isClockedIn(true)

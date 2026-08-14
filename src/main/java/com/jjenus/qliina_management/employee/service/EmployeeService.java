@@ -831,7 +831,7 @@ public List<EmployeePerformanceDTO> getPerformanceLeaderboard(UUID businessId, U
  * Uses: Shop entity for shop name lookup
  * Uses: EmployeeShift for current shift status
  */
-@Transactional(readOnly = true)
+@Transactional
 public EmployeeDetailDTO getEmployee(UUID employeeId) {
     User user = userRepository.findById(employeeId)
         .orElseThrow(() -> new BusinessException("Employee not found", "EMPLOYEE_NOT_FOUND"));

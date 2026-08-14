@@ -1,4 +1,4 @@
-package com.jjenus.qliina_management.common.config;
+package com.jjenus.qliina_management.common.seed;
 
 import com.jjenus.qliina_management.billing.model.BillingPlan;
 import com.jjenus.qliina_management.billing.model.PlanFeature;
@@ -52,7 +52,6 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Starting database initialization...");
         createPermissions();
         createRoles();
-        syncRolePermissions();
         createPlatformBusiness();
         createSuperAdmin();
         seedBillingPlans();
@@ -286,133 +285,6 @@ public class DataInitializer implements CommandLineRunner {
         r.setIsSystem(system); r.setPermissions(perms);
         r.setCreatedAt(now); r.setCreatedBy(SYSTEM_USER_ID);
         roleRepository.save(r);
-    }
-
-    /**
-     * Syncs permissions on existing roles every startup.
-     * This ensures roles get any newly added permissions without manual intervention.
-     */
-    private void syncRolePermissions() {
-        log.info("Syncing role permissions...");
-
-        // SUPER_ADMIN - Full platform access
-        syncRole("SUPER_ADMIN",
-            new HashSet<>(permissionRepository.findAll()));
-
-        // BUSINESS_ADMIN - Full business control (all BUSINESS and SHOP scope permissions)
-        syncRole("BUSINESS_ADMIN",
-            new HashSet<>(permissionRepository.findByScopeIn(Arrays.asList(
-                Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))));
-
-        // SHOP_MANAGER - Operational control with necessary business permissions
-        syncRole("SHOP_MANAGER",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                // Order management (full control)
-                "order.view", "order.create", "order.update", "order.delete",
-                "order.status.update", "order.transfer",
-                // Payment management (full control)
-                "payment.process", "payment.refund", "payment.view",
-                // Inventory management (full control)
-                "inventory.view", "inventory.manage", "inventory.adjust",
-                // Quality control (shop-level checks)
-                "quality.check",
-                // Quality management (business-level quality oversight)
-                "quality.view", "quality.manage",
-                // Customer management (full control)
-                "customer.view", "customer.create", "customer.update",
-                // Reporting (all reports including dashboard)
-                "report.view.operational", "report.view.financial", "report.export",
-                // Notifications (view and update)
-                "notification.view", "notification.update",
-                // Employee management (full control)
-                "employee.view", "employee.clock", "employee.manage",
-                // User management (can view users)
-                "user.view"
-            ))));
-
-        // FRONT_DESK - Order intake, payments, and customer service
-        syncRole("FRONT_DESK",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                // Order management (create and view)
-                "order.view", "order.create", "order.update", "order.status.update",
-                // Payment processing
-                "payment.process", "payment.view",
-                // Customer management
-                "customer.view", "customer.create", "customer.update",
-                // Reporting (operational dashboard)
-                "report.view.operational",
-                // Notifications
-                "notification.view", "notification.update",
-                // Employee (own clock-in and view)
-                "employee.clock", "employee.view"
-            ))));
-
-        // WASHER - Laundry technicians
-        syncRole("WASHER",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                // Order management (view and status updates)
-                "order.view", "order.status.update",
-                // Quality control (check and view)
-                "quality.check", "quality.view",
-                // Notifications
-                "notification.view", "notification.update",
-                // Employee (own clock-in and view)
-                "employee.clock", "employee.view"
-            ))));
-
-        // IRONER - Ironing and finishing staff
-        syncRole("IRONER",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                // Order management (view and status updates)
-                "order.view", "order.status.update",
-                // Quality control (check and view)
-                "quality.check", "quality.view",
-                // Notifications
-                "notification.view", "notification.update",
-                // Employee (own clock-in and view)
-                "employee.clock", "employee.view"
-            ))));
-
-        // DELIVERY - Delivery personnel
-        syncRole("DELIVERY",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                // Order management (view and status updates)
-                "order.view", "order.status.update",
-                // Notifications
-                "notification.view", "notification.update",
-                // Employee (own clock-in and view)
-                "employee.clock", "employee.view"
-            ))));
-
-        // Platform roles
-        syncRole("PLATFORM_ADMIN",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "platform.businesses.view", "platform.businesses.manage",
-                "platform.plans.manage", "platform.billing.manage", "platform.audit.view"
-            ))));
-
-        syncRole("SUPPORT_AGENT",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "platform.businesses.view", "platform.support.view"
-            ))));
-
-        syncRole("BILLING_ADMIN",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "platform.businesses.view", "platform.billing.manage"
-            ))));
-
-        syncRole("READONLY_AUDITOR",
-            new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                "platform.businesses.view", "platform.audit.view"
-            ))));
-    }
-
-    private void syncRole(String roleName, Set<Permission> permissions) {
-        roleRepository.findByName(roleName).ifPresent(role -> {
-            role.setPermissions(permissions);
-            roleRepository.save(role);
-            log.info("Synced {} permissions for role: {}", permissions.size(), roleName);
-        });
     }
 
     private void createPlatformBusiness() {

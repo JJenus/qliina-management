@@ -15,6 +15,11 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 
+# Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
+app:
+  seed-demo:
+    enabled: true
+
 logging:
   level:
     com.jjenus.qliina_management: DEBUG

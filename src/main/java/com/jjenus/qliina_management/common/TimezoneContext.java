@@ -11,6 +11,10 @@ public final class TimezoneContext {
         ZONE.set(zone);
     }
 
+    public static ZoneId getZone() {
+        return ZONE.get();
+    }
+
     public static void clear() {
         ZONE.remove();
     }

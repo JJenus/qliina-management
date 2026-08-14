@@ -80,7 +80,7 @@ public class WorkerOrderService {
     /** Roles that can use item-level operations */
     private static final Set<String> ITEM_WORKER_ROLES = Set.of("WASHER", "IRONER");
 
-    @Transactional(readOnly = true)
+    @Transactional
     public WorkerItemDTO lookupItem(UUID businessId, UUID workerId, String itemId) {
         String role = shiftGateService.getPrimaryRole(workerId);
         shiftGateService.requireClockedIn(workerId, role, businessId);
@@ -461,7 +461,8 @@ public class WorkerOrderService {
             ROLE_ITEM_TRANSITIONS.getOrDefault(currentRole, Map.of());
 
         List<String> availableActions = new ArrayList<>();
-        if (transitions.containsKey(item.getStatus())) {
+        Set<OrderItem.ItemStatus> produced = new HashSet<>(transitions.values());
+        if (transitions.containsKey(item.getStatus()) && !produced.contains(item.getStatus())) {
             availableActions.add("START");
         }
 
