@@ -180,8 +180,13 @@ public class DevDataSeeder implements CommandLineRunner {
         BusinessRegistrationResponse reg = businessService.registerBusiness(req);
         businessId = reg.getBusinessId();
 
-        // Upgrade the demo tenant to PRO/ACTIVE so all shops, users and orders are allowed.
+        // registerBusiness always appends a random suffix to the requested slug
+        // ("qliina-demo-6ca2"), which would break both the idempotency guard above
+        // (existsBySlug(DEMO_SLUG) never matches → a duplicate demo tenant would
+        // be seeded on every startup) and any lookup by the canonical slug.
+        // Force the canonical slug here so the seed is truly create-once.
         Business business = businessRepository.findById(businessId).orElseThrow();
+        business.setSlug(DEMO_SLUG);
         business.setPlan(Business.Plan.PRO);
         business.setStatus(Business.Status.ACTIVE);
         business.setTrialEndsAt(null);

@@ -1,6 +1,5 @@
 package com.jjenus.qliina_management.common.config;
 
-import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -9,8 +8,10 @@ import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.jjenus.qliina_management.common.TimezoneContext;
+import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ValueSerializer;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -22,6 +23,46 @@ import java.util.TimeZone;
 @Configuration
 public class JacksonConfig {
 
+    private static final DateTimeFormatter ISO_NAIVE = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+
+    /**
+     * Spring Boot 4 serializes HTTP responses with Jackson 3 (tools.jackson),
+     * built via JsonMapperBuilderCustomizer beans. Register a zone-aware
+     * LocalDateTime serializer there so business-scoped requests emit an
+     * ISO-8601 offset (e.g. 2026-08-07T08:05:00+01:00) instead of a naive
+     * string, letting JS clients on any timezone reconstruct the correct
+     * instant for elapsed-time math. Falls back to naive ISO output outside
+     * business-scoped requests (no TimezoneContext zone set).
+     */
+    @Bean
+    public JsonMapperBuilderCustomizer businessZoneLocalDateTimeCustomizer() {
+        return builder -> {
+            tools.jackson.databind.module.SimpleModule zoneModule = new tools.jackson.databind.module.SimpleModule();
+            zoneModule.addSerializer(LocalDateTime.class, new Jackson3ZoneLocalDateTimeSerializer());
+            builder.addModule(zoneModule);
+        };
+    }
+
+    private static class Jackson3ZoneLocalDateTimeSerializer extends ValueSerializer<LocalDateTime> {
+
+        @Override
+        public void serialize(LocalDateTime value, tools.jackson.core.JsonGenerator gen,
+                              tools.jackson.databind.SerializationContext serializers)
+                throws tools.jackson.core.JacksonException {
+            ZoneId zone = TimezoneContext.getZone();
+            if (zone == null) {
+                gen.writeString(ISO_NAIVE.format(value));
+                return;
+            }
+            OffsetDateTime odt = value.atZone(zone).toOffsetDateTime();
+            gen.writeString(odt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+        }
+    }
+
+    /**
+     * Jackson 2 mapper kept for internal consumers that inject the legacy
+     * com.fasterxml.jackson ObjectMapper (audit JSON storage etc.).
+     */
     @Bean
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
@@ -31,31 +72,23 @@ public class JacksonConfig {
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-        // Serialize all LocalDateTime fields as UTC ISO-8601 strings so JS
-        // engines on any client timezone parse elapsed-time correctly.
         mapper.setTimeZone(TimeZone.getTimeZone("UTC"));
 
-        // Registered after JavaTimeModule so it wins for LocalDateTime.
-        // When TimezoneContext carries the business timezone, timestamps are
-        // emitted with that zone's offset (e.g. 2026-08-07T08:05:00+01:00) so
-        // clients in any timezone reconstruct the correct instant. Falls back
-        // to naive ISO output (no offset) outside business-scoped requests.
         SimpleModule zoneModule = new SimpleModule();
-        zoneModule.addSerializer(LocalDateTime.class, new BusinessZoneLocalDateTimeSerializer());
+        zoneModule.addSerializer(LocalDateTime.class, new Jackson2ZoneLocalDateTimeSerializer());
         mapper.registerModule(zoneModule);
 
         return mapper;
     }
 
-    private static class BusinessZoneLocalDateTimeSerializer extends JsonSerializer<LocalDateTime> {
-
-        private static final DateTimeFormatter ISO_LOCAL_DATE_TIME = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static class Jackson2ZoneLocalDateTimeSerializer extends JsonSerializer<LocalDateTime> {
 
         @Override
-        public void serialize(LocalDateTime value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+        public void serialize(LocalDateTime value, com.fasterxml.jackson.core.JsonGenerator gen,
+                              SerializerProvider serializers) throws IOException {
             ZoneId zone = TimezoneContext.getZone();
             if (zone == null) {
-                gen.writeString(ISO_LOCAL_DATE_TIME.format(value));
+                gen.writeString(ISO_NAIVE.format(value));
                 return;
             }
             OffsetDateTime odt = value.atZone(zone).toOffsetDateTime();
