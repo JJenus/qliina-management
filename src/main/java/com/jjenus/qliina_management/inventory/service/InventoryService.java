@@ -218,7 +218,7 @@ public class InventoryService {
                 transaction.setTransactionDate(LocalDateTime.now());
                 
                 // Apply adjustment
-                if (adjustmentQuantity.compareTo(BigDecimal.ZERO) > 0) {
+                if (adjustment.getAction() == AdjustStockAction.ADD) {
                     shopStock.addStock(adjustmentQuantity);
                     transaction.setAfterQuantity(shopStock.getQuantity());
                 } else {

@@ -34,6 +34,9 @@ public class AdjustStockRequest {
         
         @NotNull(message = "Reason is required")
         private String reason;
+
+        @NotNull(message = "Reason is required")
+        private AdjustStockAction action;
         
         private String reference;
         
