@@ -39,6 +39,11 @@ public class JwtProvider {
         return buildToken(extraClaims, userDetails, jwtExpiration);
     }
 
+    /** Time-boxed token — used for audited impersonation sessions. */
+    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails, long expirationMs) {
+        return buildToken(extraClaims, userDetails, expirationMs);
+    }
+
     public String generateRefreshToken(UserDetails userDetails) {
         return buildToken(new HashMap<>(), userDetails, refreshExpiration);
     }

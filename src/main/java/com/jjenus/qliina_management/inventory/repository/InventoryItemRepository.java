@@ -44,6 +44,9 @@ public interface InventoryItemRepository extends JpaRepository<InventoryItem, UU
     
     @Query("SELECT i FROM InventoryItem i WHERE i.businessId = :businessId AND i.currentStock <= i.reorderLevel / 2")
     List<InventoryItem> findCriticalStockItems(@Param("businessId") UUID businessId);
-    
+
+    /** Active items for worker-facing pickers (stock usage, supply requests). */
+    List<InventoryItem> findByBusinessIdAndIsActiveTrueOrderByNameAsc(UUID businessId);
+
     boolean existsBySku(String sku);
 }

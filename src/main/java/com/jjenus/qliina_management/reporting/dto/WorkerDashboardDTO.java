@@ -23,6 +23,12 @@ public class WorkerDashboardDTO {
     
     // Today's metrics
     private TodayMetricsDTO todayMetrics;
+
+    // Rolling period stats (last 7 / 30 days)
+    private PeriodStatsDTO periodStats;
+
+    // Efficiency metrics (avg handling time, items/hour)
+    private EfficiencyDTO efficiency;
     
     // Queue summary
     private QueueSummaryDTO queueSummary;
@@ -57,7 +63,29 @@ public class WorkerDashboardDTO {
         private int inProgressItems;    // Items currently being processed
         private String nextStatusLabel; // e.g., "WASHING" → "WASHED"
     }
-    
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PeriodStatsDTO {
+        private int days;                 // Window length (7 or 30)
+        private int itemsProcessed;       // Completions in window
+        private int itemsPassedQC;
+        private int itemsFailedQC;
+        private double avgItemsPerDay;    // itemsProcessed / days
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class EfficiencyDTO {
+        private Double avgMinutesPerItem;   // start → complete, last 30 days
+        private int itemsThisShift;         // completions since shift start
+        private Double itemsPerHourShift;   // itemsThisShift / elapsed hours
+    }
+
     @Data
     @Builder
     @NoArgsConstructor

@@ -26,6 +26,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Tag(name = "Worker Order Operations", description = "Scoped order operations for worker roles (Washer, Ironer, Delivery)")
@@ -167,5 +168,60 @@ public class WorkerOrderController {
         UUID workerId = SecurityContextUtil.requireUserId();
         String notes = request != null ? request.getNotes() : null;
         return ResponseEntity.ok(workerOrderService.completeWorkOnItem(businessId, workerId, itemId, notes));
+    }
+
+    @Operation(
+        summary = "Batch start/complete items",
+        description = "Starts or completes multiple items in one call. Each item is processed " +
+                     "independently; per-item successes and failures are returned."
+    )
+    @PostMapping("/items/batch")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<List<Map<String, Object>>> batchItems(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Valid @RequestBody BatchItemsRequest request) {
+
+        UUID workerId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(
+            workerOrderService.batchItems(businessId, workerId, request.getItemIds(), request.getAction()));
+    }
+
+    @Operation(
+        summary = "Start delivery of an order",
+        description = "Delivery workers mark a READY_FOR_PICKUP order as OUT_FOR_DELIVERY."
+    )
+    @PostMapping("/{orderId}/delivery/start")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<WorkerItemDTO> startDelivery(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Parameter(description = "Order ID (UUID)", required = true)
+            @PathVariable UUID orderId) {
+
+        UUID workerId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(workerOrderService.startDelivery(businessId, workerId, orderId));
+    }
+
+    @Operation(
+        summary = "Complete delivery of an order",
+        description = "Delivery workers mark an OUT_FOR_DELIVERY order as COMPLETED."
+    )
+    @PostMapping("/{orderId}/delivery/complete")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'order.status.update')")
+    public ResponseEntity<WorkerItemDTO> completeDelivery(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Parameter(description = "Order ID (UUID)", required = true)
+            @PathVariable UUID orderId,
+
+            @Valid @RequestBody(required = false) CompleteWorkRequest request) {
+
+        UUID workerId = SecurityContextUtil.requireUserId();
+        String notes = request != null ? request.getNotes() : null;
+        return ResponseEntity.ok(workerOrderService.completeDelivery(businessId, workerId, orderId, notes));
     }
 }

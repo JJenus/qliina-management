@@ -74,7 +74,7 @@ public class Notification extends BaseTenantEntity {
     private Integer retryCount = 0;
     
     public enum NotificationType {
-        ORDER_STATUS, PAYMENT, REMINDER, PROMOTION, ALERT, SYSTEM
+        ORDER_STATUS, PAYMENT, REMINDER, PROMOTION, ALERT, SYSTEM, STOCK_REQUEST
     }
     
     public enum NotificationChannel {

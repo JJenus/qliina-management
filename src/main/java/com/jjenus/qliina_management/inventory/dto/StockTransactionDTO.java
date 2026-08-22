@@ -31,4 +31,6 @@ public class StockTransactionDTO {
     private BigDecimal afterQuantity;
     private BigDecimal unitCost;
     private BigDecimal totalCost;
+    private UUID orderId;
+    private UUID orderItemId;
 }

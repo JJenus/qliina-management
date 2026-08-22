@@ -18,6 +18,13 @@ import java.util.UUID;
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, UUID>, JpaSpecificationExecutor<Notification> {
 
+    @Query("SELECT n.status, COUNT(n) FROM Notification n GROUP BY n.status")
+    List<Object[]> countGroupedByStatus();
+
+    long countByCreatedAtAfter(LocalDateTime since);
+
+    long countByStatusAndCreatedAtAfter(Notification.NotificationStatus status, LocalDateTime since);
+
     Page<Notification> findByUserId(UUID userId, Pageable pageable);
 
     @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND n.status = 'PENDING'")

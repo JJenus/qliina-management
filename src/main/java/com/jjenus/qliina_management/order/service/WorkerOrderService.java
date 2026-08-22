@@ -246,6 +246,189 @@ public class WorkerOrderService {
     }
 
     /**
+     * Applies a quality-check outcome to an item.
+     * PASS  → IRONED/QUALITY_CHECK items become COMPLETED (order may become READY_FOR_PICKUP).
+     * FAIL  → item is sent back to WASHING for rework (rewash loop), counted as rework downstream.
+     */
+    @Transactional
+    public void applyQualityOutcome(UUID businessId, UUID itemId, boolean passed, UUID checkedBy) {
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new BusinessException("Item not found", "ITEM_NOT_FOUND"));
+
+        if (!businessId.equals(item.getOrder().getBusinessId())) {
+            throw new BusinessException("Item not found in this business", "ITEM_NOT_FOUND");
+        }
+
+        if (passed) {
+            if (item.getStatus() != OrderItem.ItemStatus.IRONED
+                    && item.getStatus() != OrderItem.ItemStatus.QUALITY_CHECK) {
+                return;
+            }
+            item.setStatus(OrderItem.ItemStatus.COMPLETED);
+            addStatusHistory(item, OrderItem.ItemStatus.COMPLETED, checkedBy,
+                    "QC passed — item completed");
+        } else {
+            if (item.getStatus() == OrderItem.ItemStatus.COMPLETED
+                    || item.getStatus() == OrderItem.ItemStatus.RECEIVED) {
+                return;
+            }
+            item.setStatus(OrderItem.ItemStatus.WASHING);
+            addStatusHistory(item, OrderItem.ItemStatus.WASHING, checkedBy,
+                    "QC failed — sent for rework/rewash");
+        }
+
+        orderItemRepository.save(item);
+        synchronizeOrderStatus(item.getOrder(), checkedBy);
+    }
+
+    private void addStatusHistory(OrderItem item, OrderItem.ItemStatus status, UUID actorId, String notes) {
+        ItemStatusHistory history = new ItemStatusHistory();
+        history.setOrderItem(item);
+        history.setStatus(status.toString());
+        history.setTimestamp(LocalDateTime.now());
+        history.setUpdatedBy(actorId);
+        history.setNotes(notes);
+        item.getStatusHistory().add(history);
+    }
+
+    @Transactional
+    public WorkerItemDTO startDelivery(UUID businessId, UUID workerId, UUID orderId) {
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
+
+        if (!"DELIVERY".equals(role)) {
+            throw new BusinessException(
+                "Delivery operations are only available for the Delivery role.",
+                "NOT_DELIVERY_ROLE"
+            );
+        }
+
+        Order order = findOrder(businessId, orderId);
+
+        if (order.getStatus() != Order.OrderStatus.READY_FOR_PICKUP) {
+            throw new BusinessException(
+                String.format("Cannot start delivery for order in '%s' status. Expected READY_FOR_PICKUP.",
+                    order.getStatus()),
+                "INVALID_STATUS_TRANSITION"
+            );
+        }
+
+        applyOrderTransition(order, Order.OrderStatus.OUT_FOR_DELIVERY, workerId,
+            "Out for delivery");
+        return mapDeliveryOrderDTO(order);
+    }
+
+    @Transactional
+    public WorkerItemDTO completeDelivery(UUID businessId, UUID workerId, UUID orderId, String notes) {
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
+
+        if (!"DELIVERY".equals(role)) {
+            throw new BusinessException(
+                "Delivery operations are only available for the Delivery role.",
+                "NOT_DELIVERY_ROLE"
+            );
+        }
+
+        Order order = findOrder(businessId, orderId);
+
+        if (order.getStatus() != Order.OrderStatus.OUT_FOR_DELIVERY) {
+            throw new BusinessException(
+                String.format("Cannot complete delivery for order in '%s' status. Expected OUT_FOR_DELIVERY.",
+                    order.getStatus()),
+                "INVALID_STATUS_TRANSITION"
+            );
+        }
+
+        Order.OrderStatus previousStatus = order.getStatus();
+        order.markCompleted();
+
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("STATUS_CHANGE");
+        timeline.setStatus(Order.OrderStatus.COMPLETED.toString());
+        timeline.setDescription(String.format("Delivery completed (%s → %s)%s",
+            previousStatus, Order.OrderStatus.COMPLETED,
+            notes != null && !notes.isBlank() ? ": " + notes : ""));
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(workerId);
+        timeline.setUserName(getUserName(workerId));
+        order.getTimeline().add(timeline);
+
+        orderRepository.save(order);
+        return mapDeliveryOrderDTO(order);
+    }
+
+    /**
+     * Batch start/complete for item workers. Processes each item independently;
+     * failures are reported per-item instead of aborting the whole batch.
+     */
+    @Transactional
+    public List<Map<String, Object>> batchItems(
+            UUID businessId, UUID workerId, List<UUID> itemIds, String action) {
+
+        String role = shiftGateService.getPrimaryRole(workerId);
+        shiftGateService.requireClockedIn(workerId, role, businessId);
+
+        if (!ITEM_WORKER_ROLES.contains(role)) {
+            throw new BusinessException(
+                "Batch operations are only available for Washer and Ironer roles.",
+                "NOT_ITEM_WORKER_ROLE"
+            );
+        }
+        if (!"START".equals(action) && !"COMPLETE".equals(action)) {
+            throw new BusinessException("Action must be START or COMPLETE", "INVALID_ACTION");
+        }
+        if (itemIds == null || itemIds.isEmpty()) {
+            throw new BusinessException("At least one item is required", "INVALID_REQUEST");
+        }
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (UUID itemId : itemIds) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("itemId", itemId);
+            try {
+                WorkerItemDTO dto = "START".equals(action)
+                        ? startWorkOnItem(businessId, workerId, itemId)
+                        : completeWorkOnItem(businessId, workerId, itemId, null);
+                entry.put("success", true);
+                entry.put("status", dto.getStatus());
+            } catch (BusinessException e) {
+                entry.put("success", false);
+                entry.put("error", e.getMessage());
+            }
+            results.add(entry);
+        }
+        return results;
+    }
+
+    private Order findOrder(UUID businessId, UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        if (!businessId.equals(order.getBusinessId())) {
+            throw new BusinessException("Order not found in this business", "ORDER_NOT_FOUND");
+        }
+        return order;
+    }
+
+    private void applyOrderTransition(Order order, Order.OrderStatus next, UUID workerId, String description) {
+        Order.OrderStatus previousStatus = order.getStatus();
+        order.setStatus(next);
+
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("STATUS_CHANGE");
+        timeline.setStatus(next.toString());
+        timeline.setDescription(String.format("%s (%s → %s)", description, previousStatus, next));
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(workerId);
+        timeline.setUserName(getUserName(workerId));
+        order.getTimeline().add(timeline);
+
+        orderRepository.save(order);
+    }
+
+    /**
      * Gets delivery queue at the ORDER level (not item level).
      * Delivery workers see orders ready for pickup/delivery.
      */
@@ -256,25 +439,30 @@ public class WorkerOrderService {
                 pageable);
 
         List<WorkerItemDTO> dtos = orders.getContent().stream()
-                .map(order -> {
-                    // For delivery, represent the whole order as a single work item
-                    return WorkerItemDTO.builder()
-                            .id(order.getId())
-                            .orderId(order.getId())
-                            .orderNumber(order.getOrderNumber())
-                            .serviceType("Delivery — " + order.getItemCount() + " pieces")
-                            .quantity(order.getItemCount())
-                            .status(order.getStatus().toString())
-                            .priority(order.getPriority().toString())
-                            .receivedAt(order.getReceivedAt())
-                            .promisedDate(order.getPromisedDate())
-                            .availableActions(List.of("START"))
-                            .needsQualityCheck(false)
-                            .build();
-                })
+                .map(this::mapDeliveryOrderDTO)
                 .collect(Collectors.toList());
 
         return PageResponse.from(new PageImpl<>(dtos, pageable, orders.getTotalElements()));
+    }
+
+    private WorkerItemDTO mapDeliveryOrderDTO(Order order) {
+        // For delivery, represent the whole order as a single work item
+        List<String> actions = order.getStatus() == Order.OrderStatus.READY_FOR_PICKUP
+                ? List.of("START")
+                : List.of("COMPLETE");
+        return WorkerItemDTO.builder()
+                .id(order.getId())
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .serviceType("Delivery — " + order.getItemCount() + " pieces")
+                .quantity(order.getItemCount())
+                .status(order.getStatus().toString())
+                .priority(order.getPriority().toString())
+                .receivedAt(order.getReceivedAt())
+                .promisedDate(order.getPromisedDate())
+                .availableActions(actions)
+                .needsQualityCheck(false)
+                .build();
     }
 
     /**
@@ -365,7 +553,7 @@ public class WorkerOrderService {
         }
 
         itemId = itemId.replaceAll("\\s+", "").toUpperCase();
-    
+
         // 1. Try UUID (internal system use)
         try {
             UUID uuid = UUID.fromString(itemId);
@@ -374,29 +562,47 @@ public class WorkerOrderService {
         } catch (IllegalArgumentException ignored) {
             // Not a UUID → continue
         }
-    
-        // 2. Unit barcode: format "FX78GLJ6-01" or "QL-FX78GLJ6-01" (2-digit suffix)
-        //    The 2-digit suffix distinguishes unit barcodes from single-item checksum barcodes.
-        String normalizedForUnit = itemId.startsWith("QL-") ? itemId.substring(3) : itemId;
-        if (normalizedForUnit.matches("[A-Z2-9]{8}-\\d{2,}")) {
-            String fullBarcode = "QL-" + normalizedForUnit;
-            Optional<OrderItemUnit> unit =
-                    orderItemUnitRepository.findByBusinessIdAndBarcode(businessId, fullBarcode);
-            if (unit.isPresent()) {
-                return unit.get().getOrderItem();
-            }
-        }
 
-        // 3. Validate checksum BEFORE hitting DB
-        String id = itemId.contains("-") ? itemId.substring(3) : itemId;
-        log.debug("Item ID: {}", id);
-
-        if (!IdGenerator.isValidWithChecksum(id)) {
+        // Strip the optional "QL-" prefix ONCE (only when present). All stored
+        // formats share the same bare form afterwards:
+        //   single item  → "A7K3M9X2-5"  (barcode "QL-A7K3M9X2-5")
+        //   unit piece   → "FX78GLJ6-01" (barcode "QL-FX78GLJ6-01")
+        //   batch base   → "FX78GLJ6"    (barcode "QL-FX78GLJ6", multi-unit items)
+        String bare = itemId.startsWith("QL-") ? itemId.substring(3) : itemId;
+        if (bare.isEmpty()) {
             throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
         }
+        log.debug("Item ID lookup: input='{}', bare='{}'", itemId, bare);
 
-        // 4. Safe to query
-        return orderItemRepository.findByBusinessIdAndCode(businessId, itemId).orElseThrow(()-> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
+        // 2. Unit barcode: 2-digit suffix distinguishes per-piece barcodes from
+        //    single-item checksum barcodes (single digit).
+        if (bare.matches("[A-Z2-9]{8}-\\d{2,}")) {
+            OrderItemUnit unit = orderItemUnitRepository
+                    .findByBusinessIdAndBarcode(businessId, "QL-" + bare)
+                    .orElseThrow(() -> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
+            return unit.getOrderItem();
+        }
+
+        // 3. Checksum format "A7K3M9X2-5": validate checksum BEFORE hitting DB,
+        //    then match either the stored itemNumber (bare) or barcode (QL-prefixed).
+        if (bare.matches("[A-Z2-9]{8}-\\d")) {
+            if (!IdGenerator.isValidWithChecksum(bare)) {
+                throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
+            }
+            return orderItemRepository.findByBusinessIdAndCode(businessId, bare)
+                    .or(() -> orderItemRepository.findByBusinessIdAndCode(businessId, "QL-" + bare))
+                    .orElseThrow(() -> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
+        }
+
+        // 4. Bare base without checksum ("A7K3M9X2"): covers manual entry of the
+        //    visible base and multi-unit batch bases ("QL-FX78GLJ6").
+        if (bare.matches("[A-Z2-9]{6,12}")) {
+            return orderItemRepository.findByBusinessIdAndCode(businessId, bare)
+                    .or(() -> orderItemRepository.findByBusinessIdAndCode(businessId, "QL-" + bare))
+                    .orElseThrow(() -> new BusinessException("Item ID not found", "ITEM_NOTFOUND"));
+        }
+
+        throw new BusinessException("Invalid item ID format", "INVALID_ITEM_ID");
     }
 
     private String determineAccessMethod(String itemId) {
@@ -404,20 +610,25 @@ public class WorkerOrderService {
         if (itemId == null || itemId.trim().isEmpty()) {
             return "INVALID_INPUT";
         }
-    
+
         itemId = itemId.replaceAll("\\s+", "").toUpperCase();
-    
+
         // 1. UUID → internal system usage
         try {
             UUID.fromString(itemId);
             return "UUID_AUTOMATED_LOOKUP";
         } catch (IllegalArgumentException ignored) {}
-    
-        // 2. Checksum-valid ID → trusted input
-        if (IdGenerator.isValidWithChecksum(itemId)) {
-            return itemId.startsWith("QL-") ? "QR_SCAN" : "MANUAL_ENTRY_VALID";
+
+        String bare = itemId.startsWith("QL-") ? itemId.substring(3) : itemId;
+        boolean prefixed = itemId.startsWith("QL-");
+
+        // 2. Recognised scannable/manual formats → trusted input
+        if (bare.matches("[A-Z2-9]{8}-\\d{2,}")
+                || (bare.matches("[A-Z2-9]{8}-\\d") && IdGenerator.isValidWithChecksum(bare))
+                || bare.matches("[A-Z2-9]{6,12}")) {
+            return prefixed ? "QR_SCAN" : "MANUAL_ENTRY_VALID";
         }
-    
+
         // 3. Fallback → invalid / mistyped
         return "MANUAL_ENTRY_INVALID";
     }

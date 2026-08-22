@@ -54,10 +54,18 @@ public class StockTransaction extends BaseTenantEntity {
     
     @Column(name = "unit_cost", precision = 10, scale = 2)
     private BigDecimal unitCost;
-    
+
     @Column(name = "total_cost", precision = 10, scale = 2)
     private BigDecimal totalCost;
-    
+
+    /** Order the usage is attributed to (USED transactions only, nullable). */
+    @Column(name = "order_id")
+    private UUID orderId;
+
+    /** Specific order item the usage is attributed to (nullable). */
+    @Column(name = "order_item_id")
+    private UUID orderItemId;
+
     @Column(name = "transaction_date", nullable = false)
     private LocalDateTime transactionDate;
     

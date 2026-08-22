@@ -45,6 +45,10 @@ public interface SecurityEventRepository extends JpaRepository<SecurityEvent, UU
            "AND s.username = :username AND s.timestamp >= :since")
     long countFailedLoginsForUser(@Param("username") String username,
                                    @Param("since") LocalDateTime since);
+
+    long countByTimestampAfter(LocalDateTime since);
+
+    long countByEventTypeAndTimestampAfter(SecurityEvent.SecurityEventType eventType, LocalDateTime since);
     
     @Query("SELECT s FROM SecurityEvent s WHERE s.blocked = true AND s.resolvedAt IS NULL")
     List<SecurityEvent> findActiveBlocks();

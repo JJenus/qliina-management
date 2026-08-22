@@ -35,7 +35,7 @@ public class AdjustStockRequest {
         @NotNull(message = "Reason is required")
         private String reason;
 
-        @NotNull(message = "Reason is required")
+        /** Optional explicit direction; inferred from the quantity sign when omitted. */
         private AdjustStockAction action;
         
         private String reference;

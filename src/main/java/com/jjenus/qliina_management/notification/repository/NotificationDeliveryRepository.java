@@ -17,6 +17,9 @@ import java.util.UUID;
 @Repository
 public interface NotificationDeliveryRepository extends JpaRepository<NotificationDelivery, UUID> {
 
+    @Query("SELECT d.status, COUNT(d) FROM NotificationDelivery d GROUP BY d.status")
+    List<Object[]> countGroupedByStatus();
+
     List<NotificationDelivery> findByNotificationIdOrderByCreatedAtAsc(UUID notificationId);
 
     long countByNotificationIdAndStatus(UUID notificationId, NotificationDeliveryStatus status);

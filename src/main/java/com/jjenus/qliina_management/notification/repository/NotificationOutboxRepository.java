@@ -16,6 +16,9 @@ import java.util.UUID;
 @Repository
 public interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox, UUID> {
 
+    @Query("SELECT o.status, COUNT(o) FROM NotificationOutbox o GROUP BY o.status")
+    List<Object[]> countGroupedByStatus();
+
     /** Re-lock a single row before processing — prevents concurrent workers from both acting. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM NotificationOutbox o WHERE o.id = :id")

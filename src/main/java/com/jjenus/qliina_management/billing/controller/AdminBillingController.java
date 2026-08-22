@@ -24,11 +24,14 @@ public class AdminBillingController {
 
     private static final String BILLING = "hasPermission(null, 'PLATFORM', 'platform.billing.manage')";
     private static final String PLANS = "hasPermission(null, 'PLATFORM', 'platform.plans.manage')";
+    private static final String COUPONS = "hasPermission(null, 'PLATFORM', 'platform.coupons.manage')";
 
     private final PlanManagementService planManagementService;
     private final BillingQueryService queryService;
     private final CouponService couponService;
     private final SubscriptionService subscriptionService;
+    private final com.jjenus.qliina_management.billing.repository.CouponRedemptionRepository redemptionRepository;
+    private final com.jjenus.qliina_management.business.repository.BusinessRepository businessRepository;
 
     // ---------------------------------------------------------------------
     // Plans / versions / features
@@ -124,7 +127,7 @@ public class AdminBillingController {
     }
 
     @PostMapping("/api/v1/admin/billing/coupons")
-    @PreAuthorize(PLANS)
+    @PreAuthorize(PLANS + " or " + COUPONS)
     public ResponseEntity<CouponDTO> createCoupon(@RequestBody CreateCouponRequest body) {
         if (body == null || body.code() == null || body.code().isBlank()) {
             throw new com.jjenus.qliina_management.common.BusinessException("'code' is required", "MISSING_COUPON_CODE", "code");
@@ -146,7 +149,7 @@ public class AdminBillingController {
     }
 
     @PutMapping("/api/v1/admin/billing/coupons/{id}")
-    @PreAuthorize(PLANS)
+    @PreAuthorize(PLANS + " or " + COUPONS)
     public ResponseEntity<CouponDTO> updateCoupon(@PathVariable UUID id, @RequestBody CreateCouponRequest body) {
         Coupon update = Coupon.builder()
                 .discountType(body.discountType()).discountValue(body.discountValue())
@@ -159,6 +162,23 @@ public class AdminBillingController {
                 coupon.getMaxRedemptionsPerBusiness(), coupon.getStartsAt(), coupon.getExpiresAt(),
                 coupon.getStatus()));
     }
+
+    @GetMapping("/api/v1/admin/billing/coupons/{id}/redemptions")
+    @PreAuthorize(BILLING + " or " + COUPONS)
+    public ResponseEntity<com.jjenus.qliina_management.common.PageResponse<CouponRedemptionRow>> couponRedemptions(
+            @PathVariable UUID id,
+            @org.springframework.data.web.PageableDefault(size = 20) org.springframework.data.domain.Pageable pageable) {
+        var page = redemptionRepository.findByCouponIdOrderByRedeemedAtDesc(id, pageable);
+        var bizNames = businessRepository.findAllById(
+                page.getContent().stream().map(r -> r.getBusinessId()).collect(java.util.stream.Collectors.toSet()))
+                .stream().collect(java.util.stream.Collectors.toMap(b -> b.getId(), b -> b.getName(), (a, b2) -> a));
+        return ResponseEntity.ok(com.jjenus.qliina_management.common.PageResponse.from(
+                page.map(r -> new CouponRedemptionRow(r.getId(), r.getCouponId(), r.getBusinessId(),
+                        bizNames.get(r.getBusinessId()), r.getSubscriptionId(), r.getRedeemedAt()))));
+    }
+
+    public record CouponRedemptionRow(UUID id, UUID couponId, UUID businessId, String businessName,
+                                      UUID subscriptionId, LocalDateTime redeemedAt) {}
 
     // ---------------------------------------------------------------------
     // Cross-tenant subscription views

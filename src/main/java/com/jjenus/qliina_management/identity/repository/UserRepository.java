@@ -70,4 +70,12 @@ Optional<User> findByIdentity(@Param("identity") String identity);
     /** Find users who hold a specific role name. */
     @Query("SELECT DISTINCT u FROM User u JOIN u.roles ur JOIN ur.role r WHERE r.name = :roleName ORDER BY u.createdAt DESC")
     Page<User> findByRoleName(@Param("roleName") String roleName, Pageable pageable);
+
+    /** Global tenant-user search (support lookup) — excludes platform staff. */
+    @Query("SELECT u FROM User u WHERE u.businessId IS NOT NULL AND " +
+           "(LOWER(u.username) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(u.firstName) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(u.lastName) LIKE LOWER(CONCAT('%', :q, '%')))")
+    Page<User> searchTenantUsers(@Param("q") String q, Pageable pageable);
 }

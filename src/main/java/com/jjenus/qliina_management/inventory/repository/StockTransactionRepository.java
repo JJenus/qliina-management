@@ -42,4 +42,8 @@ public interface StockTransactionRepository extends JpaRepository<StockTransacti
             @Param("itemId") UUID itemId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
+
+    /** Usage log for the authenticated worker (type USED attributed to them). */
+    Page<StockTransaction> findByBusinessIdAndPerformedByAndType(
+            UUID businessId, UUID performedBy, StockTransaction.TransactionType type, Pageable pageable);
 }

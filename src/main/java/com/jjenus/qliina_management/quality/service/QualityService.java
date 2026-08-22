@@ -34,6 +34,7 @@ public class QualityService {
     private final DefectRepository defectRepository;
     private final UserRepository userRepository;
     private final WebSocketPublisher webSocketPublisher;
+    private final com.jjenus.qliina_management.order.service.WorkerOrderService workerOrderService;
     
     private UUID getCurrentUserId() {
         try {
@@ -167,6 +168,15 @@ public class QualityService {
         check.setNotes(request.getNotes());
         
         check = qualityCheckRepository.save(check);
+
+        // Auto-advance the item based on the outcome:
+        // PASSED → item becomes COMPLETED; FAILED → item returns to WASHING for rework.
+        boolean passed = "PASSED".equals(check.getStatus());
+        try {
+            workerOrderService.applyQualityOutcome(businessId, itemId, passed, check.getCheckedBy());
+        } catch (BusinessException e) {
+            log.warn("Could not apply QC outcome to item {}: {}", itemId, e.getMessage());
+        }
 
         QualityCheckResultDTO result = QualityCheckResultDTO.builder()
             .itemId(itemId)

@@ -2,6 +2,8 @@ package com.jjenus.qliina_management.billing.repository;
 
 import com.jjenus.qliina_management.billing.model.Subscription;
 import com.jjenus.qliina_management.billing.model.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -9,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import jakarta.persistence.LockModeType;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +27,9 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     Optional<Subscription> findTopByBusinessIdOrderByCreatedAtDesc(UUID businessId);
 
     Optional<Subscription> findByBusinessIdAndStatus(UUID businessId, SubscriptionStatus status);
+
+    /** All subscription rows for a business (admin tenant-scoped listings). */
+    List<Subscription> findByBusinessId(UUID businessId);
 
     /**
      * Re-lock a single subscription for the duration of its renewal/retry —
@@ -66,4 +72,33 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
             "AND trial_ends_at IS NOT NULL AND trial_ends_at <= :now " +
             "ORDER BY trial_ends_at FOR UPDATE SKIP LOCKED", nativeQuery = true)
     List<Subscription> lockExpiredTrials(@Param("now") LocalDateTime now);
+
+    // -------------------------------------------------------------------------
+    // Platform-admin analytics & listings
+    // -------------------------------------------------------------------------
+
+    Page<Subscription> findByStatus(SubscriptionStatus status, Pageable pageable);
+
+    long countByStatus(SubscriptionStatus status);
+
+    long countByStatusAndCancelAtPeriodEndTrue(SubscriptionStatus status);
+
+    long countByStatusAndTrialEndsAtBetween(SubscriptionStatus status, LocalDateTime from, LocalDateTime to);
+
+    Page<Subscription> findByStatusAndTrialEndsAtBetween(SubscriptionStatus status, LocalDateTime from,
+                                                         LocalDateTime to, Pageable pageable);
+
+    /** MRR — sum of locked plan-version prices over active subscriptions. */
+    @Query("SELECT COALESCE(SUM(s.planVersion.price), 0) FROM Subscription s WHERE s.status = 'ACTIVE'")
+    BigDecimal sumActivePrice();
+
+    /** MRR grouped by plan name (revenue-by-plan breakdown). */
+    @Query("SELECT s.plan.name, SUM(s.planVersion.price) FROM Subscription s " +
+            "WHERE s.status = 'ACTIVE' GROUP BY s.plan.name")
+    List<Object[]> sumActivePriceByPlan();
+
+    /** Tenant distribution across plans (active + trialing). */
+    @Query("SELECT s.plan.name, COUNT(s) FROM Subscription s " +
+            "WHERE s.status IN ('ACTIVE', 'TRIALING') GROUP BY s.plan.name")
+    List<Object[]> countByPlanGrouped();
 }

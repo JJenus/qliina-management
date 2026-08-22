@@ -22,11 +22,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -59,7 +61,7 @@ public class AdminPlatformUserController {
     // -----------------------------------------------------------------------
 
     @GetMapping
-    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
     public PageResponse<UserSummaryDTO> listPlatformUsers(
             @RequestParam(required = false) String role,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
@@ -82,7 +84,7 @@ public class AdminPlatformUserController {
     // -----------------------------------------------------------------------
 
     @PostMapping
-    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
     public ResponseEntity<UserSummaryDTO> invitePlatformUser(
             @Valid @RequestBody InvitePlatformUserRequest request) {
 
@@ -146,7 +148,7 @@ public class AdminPlatformUserController {
     // -----------------------------------------------------------------------
 
     @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
     public ResponseEntity<Void> deactivatePlatformUser(@PathVariable UUID id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
@@ -162,6 +164,105 @@ public class AdminPlatformUserController {
         user.setEnabled(false);
         userRepository.save(user);
         return ResponseEntity.noContent().build();
+    }
+
+    // -----------------------------------------------------------------------
+    // Change a platform user's role
+    // -----------------------------------------------------------------------
+
+    public record ChangeRoleRequest(String role) {}
+
+    @PatchMapping("/{id}/role")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
+    public ResponseEntity<UserSummaryDTO> changeRole(
+            @PathVariable UUID id,
+            @RequestBody ChangeRoleRequest body,
+            Authentication auth) {
+        if (body == null || body.role() == null || body.role().isBlank()) {
+            throw new BusinessException("'role' is required", "VALIDATION_ERROR", "role");
+        }
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        requireSuperAdminIfTargetIsSuperAdmin(user, auth);
+        if (user.getUsername().equals(auth.getName())) {
+            throw new BusinessException("Cannot change your own role", "SELF_ROLE_CHANGE");
+        }
+
+        Role role = roleRepository.findByName(body.role())
+                .orElseThrow(() -> new BusinessException("Role '" + body.role() + "' not found", "ROLE_NOT_FOUND"));
+
+        // Replace all platform roles with the single requested one
+        user.getRoles().clear();
+        UserRole ur = new UserRole();
+        ur.setUser(user);
+        ur.setRole(role);
+        ur.setBusinessId(null);
+        ur.setShopId(null);
+        user.getRoles().add(ur);
+        userRepository.save(user);
+
+        log.info("Platform user role changed: {} -> {}", user.getUsername(), body.role());
+        return ResponseEntity.ok(toSummary(user));
+    }
+
+    // -----------------------------------------------------------------------
+    // Reactivate a deactivated platform user
+    // -----------------------------------------------------------------------
+
+    @PatchMapping("/{id}/reactivate")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
+    public ResponseEntity<UserSummaryDTO> reactivatePlatformUser(@PathVariable UUID id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        user.setEnabled(true);
+        userRepository.save(user);
+        return ResponseEntity.ok(toSummary(user));
+    }
+
+    // -----------------------------------------------------------------------
+    // Force password reset — generates a new temporary password
+    // -----------------------------------------------------------------------
+
+    @PostMapping("/{id}/force-password-reset")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.users.manage')")
+    public ResponseEntity<Map<String, Object>> forcePasswordReset(
+            @PathVariable UUID id,
+            Authentication auth) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        requireSuperAdminIfTargetIsSuperAdmin(user, auth);
+
+        String tempPassword = UUID.randomUUID().toString().substring(0, 12) + "Aa1!";
+        AuthAccount account = user.getAuthAccount();
+        if (account == null) {
+            account = new AuthAccount();
+            account.setUser(user);
+            account.setFailedAttempts(0);
+        }
+        account.setPasswordHash(passwordEncoder.encode(tempPassword));
+        account.setPasswordLastChanged(LocalDateTime.now());
+        account.setLockedUntil(null);
+        account.setFailedAttempts(0);
+        authAccountRepository.save(account);
+
+        log.info("Forced password reset for platform user {} by {}", user.getUsername(), auth.getName());
+        return ResponseEntity.ok(Map.of(
+                "userId", id,
+                "username", user.getUsername(),
+                "temporaryPassword", tempPassword
+        ));
+    }
+
+    private void requireSuperAdminIfTargetIsSuperAdmin(User target, Authentication auth) {
+        boolean targetIsSuper = target.getRoles().stream()
+                .anyMatch(ur -> "SUPER_ADMIN".equals(ur.getRole().getName()));
+        if (!targetIsSuper) return;
+        User caller = userRepository.findByUsername(auth.getName()).orElse(null);
+        boolean callerIsSuper = caller != null && caller.getRoles().stream()
+                .anyMatch(ur -> "SUPER_ADMIN".equals(ur.getRole().getName()));
+        if (!callerIsSuper) {
+            throw new BusinessException("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", "FORBIDDEN_OPERATION");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -181,6 +282,7 @@ public class AdminPlatformUserController {
                 .lastName(user.getLastName())
                 .enabled(user.getEnabled())
                 .roles(roleNames)
+                .lastLogin(user.getLastLogin())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

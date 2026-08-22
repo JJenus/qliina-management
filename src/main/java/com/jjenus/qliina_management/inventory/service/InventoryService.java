@@ -217,9 +217,16 @@ public class InventoryService {
                 transaction.setBeforeQuantity(previousQuantity);
                 transaction.setTransactionDate(LocalDateTime.now());
                 
-                // Apply adjustment
-                if (adjustment.getAction() == AdjustStockAction.ADD) {
-                    shopStock.addStock(adjustmentQuantity);
+                // Apply adjustment — explicit action wins; fall back to quantity sign
+                // (legacy clients send only reason + signed quantity)
+                AdjustStockAction effectiveAction = adjustment.getAction() != null
+                        ? adjustment.getAction()
+                        : (adjustmentQuantity.compareTo(BigDecimal.ZERO) >= 0
+                                ? AdjustStockAction.ADD
+                                : AdjustStockAction.REMOVE);
+
+                if (effectiveAction == AdjustStockAction.ADD) {
+                    shopStock.addStock(adjustmentQuantity.abs());
                     transaction.setAfterQuantity(shopStock.getQuantity());
                 } else {
                     shopStock.removeStock(adjustmentQuantity.abs());
@@ -875,6 +882,8 @@ public class InventoryService {
             .afterQuantity(transaction.getAfterQuantity())
             .unitCost(transaction.getUnitCost())
             .totalCost(transaction.getTotalCost())
+            .orderId(transaction.getOrderId())
+            .orderItemId(transaction.getOrderItemId())
             .build();
     }
     

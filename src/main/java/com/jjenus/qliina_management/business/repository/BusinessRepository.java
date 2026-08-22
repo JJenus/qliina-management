@@ -4,9 +4,11 @@ import com.jjenus.qliina_management.business.model.Business;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,7 +19,7 @@ import java.util.UUID;
  * the open-registration flow and the login business-status check.
  */
 @Repository
-public interface BusinessRepository extends JpaRepository<Business, UUID> {
+public interface BusinessRepository extends JpaRepository<Business, UUID>, JpaSpecificationExecutor<Business> {
 
     Optional<Business> findBySlug(String slug);
 
@@ -29,4 +31,10 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
     /** Case-insensitive partial name search — used by the Superadmin search bar. */
     @Query("SELECT b FROM Business b WHERE LOWER(b.name) LIKE LOWER(CONCAT('%', :name, '%'))")
     Page<Business> searchByName(@Param("name") String name, Pageable pageable);
+
+    long countByStatus(Business.Status status);
+
+    long countByCreatedAtAfter(LocalDateTime since);
+
+    Page<Business> findByCreatedAtAfter(LocalDateTime since, Pageable pageable);
 }

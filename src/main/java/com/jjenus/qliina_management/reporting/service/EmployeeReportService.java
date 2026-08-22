@@ -45,7 +45,7 @@ public class EmployeeReportService {
                     .orElseThrow(() -> new BusinessException("Employee not found", "EMPLOYEE_NOT_FOUND"))
             );
         } else {
-           List<String> roles = Arrays.asList("WASHER", "IRONER", "FRONT_DESK");
+           List<String> roles = Arrays.asList("WASHER", "IRONER", "DELIVERY", "FRONT_DESK");
           employees = userRepository.findByBusinessIdAndRoles(businessId, roles);
         }
         

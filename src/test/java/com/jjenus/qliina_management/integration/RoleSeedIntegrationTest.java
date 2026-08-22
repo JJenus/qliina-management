@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RoleSeedIntegrationTest extends BaseIntegrationTest {
 
     /** Total number of permissions defined by the seed (source of truth). */
-    private static final int TOTAL_PERMISSIONS = 45;
+    private static final int TOTAL_PERMISSIONS = 53;
 
     @Autowired
     private RoleRepository roleRepository;
@@ -76,12 +76,16 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
                 "order.view", "order.status.update",
                 "quality.check", "quality.view",
                 "notification.view", "notification.update",
-                "employee.clock", "employee.view");
+                "employee.clock", "employee.view",
+                // Worker stock usage + supply requests
+                "inventory.use", "inventory.request");
 
         Set<String> delivery = set(
                 "order.view", "order.status.update",
                 "notification.view", "notification.update",
-                "employee.clock", "employee.view");
+                "employee.clock", "employee.view",
+                // Supply requests only (no hands-on stock usage)
+                "inventory.request");
 
         Map<String, Set<String>> expected = Map.ofEntries(
                 Map.entry("SUPER_ADMIN", all),
@@ -94,6 +98,8 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
                         "payment.process", "payment.refund", "payment.view",
                         // Inventory management (full control)
                         "inventory.view", "inventory.manage", "inventory.adjust",
+                        // Manager also uses stock and receives supply requests
+                        "inventory.use", "inventory.request",
                         // Quality control + quality management
                         "quality.check", "quality.view", "quality.manage",
                         // Customer management (full control)
@@ -120,13 +126,20 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
                 Map.entry("PLATFORM_ADMIN", set(
                         "platform.businesses.view", "platform.businesses.manage",
                         "platform.plans.manage", "platform.billing.manage",
-                        "platform.audit.view")),
+                        "platform.audit.view",
+                        // ensurePlatformRolePermissions top-up
+                        "platform.stats.view", "platform.users.manage",
+                        "platform.settings.manage", "platform.notifications.manage",
+                        "platform.impersonate", "platform.coupons.manage")),
                 Map.entry("SUPPORT_AGENT", set(
-                        "platform.businesses.view", "platform.support.view")),
+                        "platform.businesses.view", "platform.support.view",
+                        "platform.stats.view")),
                 Map.entry("BILLING_ADMIN", set(
-                        "platform.businesses.view", "platform.billing.manage")),
+                        "platform.businesses.view", "platform.billing.manage",
+                        "platform.stats.view", "platform.coupons.manage")),
                 Map.entry("READONLY_AUDITOR", set(
-                        "platform.businesses.view", "platform.audit.view")));
+                        "platform.businesses.view", "platform.audit.view",
+                        "platform.stats.view", "platform.audit.export")));
 
         for (Map.Entry<String, Set<String>> e : expected.entrySet()) {
             assertThat(permissionNames(roleRepository.findByName(e.getKey())

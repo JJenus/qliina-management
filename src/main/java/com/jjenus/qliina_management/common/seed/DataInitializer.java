@@ -52,6 +52,8 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Starting database initialization...");
         createPermissions();
         createRoles();
+        ensureWorkerInventoryPermissions();
+        ensurePlatformRolePermissions();
         createPlatformBusiness();
         createSuperAdmin();
         seedBillingPlans();
@@ -101,6 +103,8 @@ public class DataInitializer implements CommandLineRunner {
         perm("inventory.view",   "View Inventory",   "View inventory items",           "INVENTORY", "SHOP", true);
         perm("inventory.manage", "Manage Inventory", "Create/update/delete inventory", "INVENTORY", "SHOP", false);
         perm("inventory.adjust", "Adjust Stock",     "Adjust stock levels",            "INVENTORY", "SHOP", true);
+        perm("inventory.use",    "Log Stock Usage",  "Log consumables used on orders", "INVENTORY", "SHOP", true);
+        perm("inventory.request","Request Supplies", "Request restock of supplies",    "INVENTORY", "SHOP", true);
 
         // Quality control
         perm("quality.check",  "Perform QC Checks", "Perform QC on orders",  "QUALITY", "SHOP",     true);
@@ -133,6 +137,12 @@ public class DataInitializer implements CommandLineRunner {
         perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.audit.view",        "Platform Audit View",       "Full read-only audit access",            "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.coupons.manage",    "Manage Coupons",            "Create and manage discount coupons",     "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.stats.view",        "View Platform Stats",       "View cross-tenant platform statistics",  "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.users.manage",      "Manage Platform Users",     "Manage platform staff accounts",         "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.settings.manage",   "Manage System Settings",    "Manage platform settings and feature flags", "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.notifications.manage", "Manage Platform Notifications", "Send broadcasts and manage system templates", "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.impersonate",       "Impersonate Tenant Users",  "Login as a tenant user for support",     "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.audit.export",      "Export Audit Logs",         "Export audit logs for compliance",       "PLATFORM_ADMIN", "GLOBAL", false);
 
         log.info("Permissions check complete. Total: {}", permissionRepository.count());
     }
@@ -172,6 +182,7 @@ public class DataInitializer implements CommandLineRunner {
                      "payment.process", "payment.refund", "payment.view",
                      // Inventory management (full control)
                      "inventory.view", "inventory.manage", "inventory.adjust",
+                     "inventory.use", "inventory.request",
                      // Quality control (shop-level checks)
                      "quality.check",
                      // Quality management (business-level quality oversight)
@@ -212,6 +223,8 @@ public class DataInitializer implements CommandLineRunner {
                      "order.view", "order.status.update",
                      // Quality control (check and view)
                      "quality.check", "quality.view",
+                     // Inventory (log consumables used, request supplies)
+                     "inventory.use", "inventory.request",
                      // Notifications
                      "notification.view", "notification.update",
                      // Employee (own clock-in and view)
@@ -225,6 +238,8 @@ public class DataInitializer implements CommandLineRunner {
                      "order.view", "order.status.update",
                      // Quality control (check and view)
                      "quality.check", "quality.view",
+                     // Inventory (log consumables used, request supplies)
+                     "inventory.use", "inventory.request",
                      // Notifications
                      "notification.view", "notification.update",
                      // Employee (own clock-in and view)
@@ -236,6 +251,8 @@ public class DataInitializer implements CommandLineRunner {
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
                      // Order management (view and status updates)
                      "order.view", "order.status.update",
+                     // Inventory (request supplies)
+                     "inventory.request",
                      // Notifications
                      "notification.view", "notification.update",
                      // Employee (own clock-in and view)
@@ -269,6 +286,59 @@ public class DataInitializer implements CommandLineRunner {
              ))));
 
         log.info("Created {} roles.", roleRepository.count());
+    }
+
+    /**
+     * Idempotent top-up for databases created before the worker inventory
+     * permissions existed (createRoles() only runs once per database).
+     */
+    private void ensureWorkerInventoryPermissions() {
+        grantIfMissing("WASHER", "inventory.use");
+        grantIfMissing("WASHER", "inventory.request");
+        grantIfMissing("IRONER", "inventory.use");
+        grantIfMissing("IRONER", "inventory.request");
+        grantIfMissing("DELIVERY", "inventory.request");
+        grantIfMissing("SHOP_MANAGER", "inventory.use");
+        grantIfMissing("SHOP_MANAGER", "inventory.request");
+    }
+
+    /**
+     * Idempotent top-up for platform roles on databases created before the
+     * expanded admin permission set existed (createRoles() only runs once).
+     */
+    private void ensurePlatformRolePermissions() {
+        // PLATFORM_ADMIN — full day-to-day platform operations
+        grantIfMissing("PLATFORM_ADMIN", "platform.stats.view");
+        grantIfMissing("PLATFORM_ADMIN", "platform.users.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.settings.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.notifications.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.impersonate");
+        grantIfMissing("PLATFORM_ADMIN", "platform.coupons.manage");
+
+        // SUPPORT_AGENT — operational stats visibility for support work
+        grantIfMissing("SUPPORT_AGENT", "platform.stats.view");
+
+        // BILLING_ADMIN — billing KPIs + coupon ownership (wires orphaned perm)
+        grantIfMissing("BILLING_ADMIN", "platform.stats.view");
+        grantIfMissing("BILLING_ADMIN", "platform.coupons.manage");
+
+        // READONLY_AUDITOR — read-only stats + audit export for compliance
+        grantIfMissing("READONLY_AUDITOR", "platform.stats.view");
+        grantIfMissing("READONLY_AUDITOR", "platform.audit.export");
+    }
+
+    private void grantIfMissing(String roleName, String permissionName) {
+        roleRepository.findByName(roleName).ifPresent(role -> {
+            boolean has = role.getPermissions().stream()
+                    .anyMatch(p -> p.getName().equals(permissionName));
+            if (!has) {
+                permissionRepository.findByName(permissionName).ifPresent(p -> {
+                    role.getPermissions().add(p);
+                    roleRepository.save(role);
+                    log.info("Granted '{}' to existing role '{}'", permissionName, roleName);
+                });
+            }
+        });
     }
 
     /** Creates a role only if one with that name does not already exist. */

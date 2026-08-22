@@ -79,7 +79,29 @@ public class ReportController {
         UUID workerId = SecurityContextUtil.requireUserId();
         return ResponseEntity.ok(workerDashboardService.getWorkerDashboard(businessId, workerId));
     }
-    
+
+    @Operation(
+        summary = "Get worker historic daily stats",
+        description = "Returns per-day processed counts and average handling minutes for the " +
+                     "authenticated worker over the requested window (1–90 days, default 7)."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode =  "200", description = "Worker history retrieved"),
+        @ApiResponse(responseCode = "403", description = "Access denied — not a worker role",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/worker-dashboard/history")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'employee.view')")
+    public ResponseEntity<WorkerHistoryDTO> getWorkerHistory(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Parameter(description = "Number of days back (1-90)")
+            @RequestParam(defaultValue = "7") int days) {
+        UUID workerId = SecurityContextUtil.requireUserId();
+        return ResponseEntity.ok(workerDashboardService.getWorkerHistory(businessId, workerId, days));
+    }
+
     @Operation(
         summary = "Revenue report",
         description = "Generate revenue report with customizable grouping and filtering"
