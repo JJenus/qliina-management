@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.business.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -13,6 +14,9 @@ public class PlanUsageDTO {
     private String tier;
     private String status;
     private LocalDateTime trialEndsAt;
+    // Primitive boolean + "is" prefix: Lombok generates isTrialExpired(), which
+    // Jackson would serialize as "trialExpired" — pin the JSON key explicitly.
+    @JsonProperty("isTrialExpired")
     private boolean isTrialExpired;
     private int daysLeftInTrial;  // -1 if no trial
 
