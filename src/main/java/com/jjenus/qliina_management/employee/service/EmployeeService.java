@@ -706,6 +706,11 @@ public class EmployeeService {
             .ontimeRate(ontimeRate)
             .reworkRate(reworkRate != null ? reworkRate : 0.0)
             .customerSatisfaction(0.0) // Would need customer feedback data
+            // Throughput proxy: completions per calendar day in the period.
+            .productivity(workingDays > 0
+                ? ((itemsProcessed != null ? itemsProcessed : 0)
+                    + (ordersProcessed != null ? ordersProcessed : 0)) / (double) workingDays
+                : 0.0)
             .targetAchievement(targetAchievement != null ? targetAchievement : 0.0)
             .build();
         
@@ -795,6 +800,13 @@ public List<EmployeePerformanceDTO> getPerformanceLeaderboard(UUID businessId, U
     } else {
         Page<User> page = userRepository.findByBusinessId(businessId, Pageable.unpaged());
         employees = page.getContent();
+    }
+
+    // Optional role filter (e.g. leaderboard for WASHERs only)
+    if (role != null && !role.isBlank()) {
+        employees = employees.stream()
+            .filter(e -> e.getRoles().stream().anyMatch(ur -> role.equals(ur.getRole().getName())))
+            .collect(Collectors.toList());
     }
     
     // Generate performance for each employee using existing method

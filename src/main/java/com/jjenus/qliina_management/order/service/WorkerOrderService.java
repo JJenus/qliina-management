@@ -113,8 +113,22 @@ public class WorkerOrderService {
             return PageResponse.from(Page.empty());
         }
 
-        Page<OrderItem> items = orderItemRepository.findByBusinessIdAndStatusIn(
-                businessId, getUser(workerId).getPrimaryShopId(), relevantStatuses, pageable);
+        // Queue shows both items waiting for the role AND items the role has
+        // already started (previously started items vanished from the queue).
+        boolean washerMode = "WASHER".equals(role);
+        boolean ironerMode = "IRONER".equals(role);
+        List<OrderItem.ItemStatus> statuses = new ArrayList<>(relevantStatuses);
+        if (washerMode) {
+            statuses.add(OrderItem.ItemStatus.WASHING);
+        } else if (ironerMode) {
+            statuses.add(OrderItem.ItemStatus.IRONING);
+            // Iron-only garments queue for ironing straight from reception.
+            statuses.add(OrderItem.ItemStatus.RECEIVED);
+        }
+
+        Page<OrderItem> items = orderItemRepository.findRoleWorkQueue(
+                businessId, getUser(workerId).getPrimaryShopId(), statuses,
+                OrderItem.ItemStatus.RECEIVED, washerMode, ironerMode, pageable);
 
         List<WorkerItemDTO> dtos = items.getContent().stream()
                 .map(item -> mapToWorkerItemDTO(item, role))
@@ -162,14 +176,15 @@ public class WorkerOrderService {
 
         recordInteraction(workerId, itemId, "QUEUE");
 
-        Map<OrderItem.ItemStatus, OrderItem.ItemStatus> transitions = 
-            ROLE_ITEM_TRANSITIONS.getOrDefault(role, Map.of());
-        OrderItem.ItemStatus nextStatus = transitions.get(item.getStatus());
+        OrderItem.ItemStatus nextStatus = resolveNextStatus(role, item);
 
         if (nextStatus == null) {
             throw new BusinessException(
-                String.format("Cannot start work on item in '%s' status as '%s' role. Expected one of: %s",
-                    item.getStatus(), role, transitions.keySet()),
+                String.format("Cannot start work on item in '%s' status as '%s' role.%s",
+                    item.getStatus(), role,
+                    !needsWashing(item) && "WASHER".equals(role)
+                        ? " This item is iron-only and skips washing."
+                        : ""),
                 "INVALID_STATUS_TRANSITION"
             );
         }
@@ -214,15 +229,14 @@ public class WorkerOrderService {
 
         recordInteraction(workerId, itemId, "COMPLETE");
 
-        Map<OrderItem.ItemStatus, OrderItem.ItemStatus> transitions = 
-            ROLE_ITEM_TRANSITIONS.getOrDefault(role, Map.of());
-        OrderItem.ItemStatus nextStatus = transitions.get(item.getStatus());
+        OrderItem.ItemStatus nextStatus = resolveNextStatus(role, item);
 
         if (nextStatus == null) {
             throw new BusinessException(
                 String.format("Cannot complete work on item in '%s' status as '%s' role. " +
                     "Item must be in one of: %s",
-                    item.getStatus(), role, transitions.keySet()),
+                    item.getStatus(), role,
+                    ROLE_ITEM_TRANSITIONS.getOrDefault(role, Map.of()).keySet()),
                 "INVALID_STATUS_TRANSITION"
             );
         }
@@ -272,9 +286,12 @@ public class WorkerOrderService {
                     || item.getStatus() == OrderItem.ItemStatus.RECEIVED) {
                 return;
             }
-            item.setStatus(OrderItem.ItemStatus.WASHING);
-            addStatusHistory(item, OrderItem.ItemStatus.WASHING, checkedBy,
-                    "QC failed — sent for rework/rewash");
+            // Rework goes back to washing — but iron-only garments never see
+            // the washer, so they return to ironing instead.
+            boolean rewash = needsWashing(item);
+            item.setStatus(rewash ? OrderItem.ItemStatus.WASHING : OrderItem.ItemStatus.IRONING);
+            addStatusHistory(item, item.getStatus(), checkedBy,
+                    rewash ? "QC failed — sent for rework/rewash" : "QC failed — returned for re-ironing");
         }
 
         orderItemRepository.save(item);
@@ -342,6 +359,10 @@ public class WorkerOrderService {
 
         Order.OrderStatus previousStatus = order.getStatus();
         order.markCompleted();
+        // Attribute the delivery for the order activity trail.
+        if (order.getDeliveryInfo() != null) {
+            order.getDeliveryInfo().setDeliveredBy(workerId);
+        }
 
         OrderTimeline timeline = new OrderTimeline();
         timeline.setOrder(order);
@@ -655,6 +676,41 @@ public class WorkerOrderService {
         });
     }
 
+    /**
+     * Whether this garment must pass through washing before finishing.
+     * Legacy rows / unknown services default to wash-required.
+     */
+    private static boolean needsWashing(OrderItem item) {
+        return item.getRequiresWashing() == null || item.getRequiresWashing();
+    }
+
+    /**
+     * Resolves the next status a role can move an item to, honoring the
+     * per-item pipeline: iron-only / dry-clean items skip washing and go
+     * RECEIVED -> IRONING directly in the ironer's hands. Returns null when
+     * the role may not act on the item in its current status.
+     */
+    private OrderItem.ItemStatus resolveNextStatus(String role, OrderItem item) {
+        Map<OrderItem.ItemStatus, OrderItem.ItemStatus> transitions =
+            ROLE_ITEM_TRANSITIONS.getOrDefault(role, Map.of());
+        OrderItem.ItemStatus direct = transitions.get(item.getStatus());
+
+        if (direct != null) {
+            // Washers must never pick up garments that skip washing.
+            if ("WASHER".equals(role) && item.getStatus() == OrderItem.ItemStatus.RECEIVED && !needsWashing(item)) {
+                return null;
+            }
+            return direct;
+        }
+        // Express lane: reception-straight-to-iron for iron-only items.
+        if ("IRONER".equals(role)
+                && item.getStatus() == OrderItem.ItemStatus.RECEIVED
+                && !needsWashing(item)) {
+            return OrderItem.ItemStatus.IRONING;
+        }
+        return null;
+    }
+
     private User getUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
@@ -668,12 +724,12 @@ public class WorkerOrderService {
     }
 
     private WorkerItemDTO mapToWorkerItemDTO(OrderItem item, String currentRole) {
-        Map<OrderItem.ItemStatus, OrderItem.ItemStatus> transitions = 
+        Map<OrderItem.ItemStatus, OrderItem.ItemStatus> transitions =
             ROLE_ITEM_TRANSITIONS.getOrDefault(currentRole, Map.of());
 
         List<String> availableActions = new ArrayList<>();
         Set<OrderItem.ItemStatus> produced = new HashSet<>(transitions.values());
-        if (transitions.containsKey(item.getStatus()) && !produced.contains(item.getStatus())) {
+        if (resolveNextStatus(currentRole, item) != null && !produced.contains(item.getStatus())) {
             availableActions.add("START");
         }
 
@@ -696,6 +752,7 @@ public class WorkerOrderService {
                 .orderNumber(item.getOrder().getOrderNumber())
                 .serviceType(item.getServiceType())
                 .garmentType(item.getGarmentType())
+                .requiresWashing(needsWashing(item))
                 .description(item.getDescription())
                 .quantity(item.getQuantity())
                 .weight(item.getWeight())

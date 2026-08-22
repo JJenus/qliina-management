@@ -24,6 +24,8 @@ public class WorkerItemDTO {
     private String customerName;
     private String serviceType;
     private String garmentType;
+    /** False for iron-only / dry-clean garments: they skip the washing stage. */
+    private Boolean requiresWashing;
     private String description;
     private Integer quantity;
     private BigDecimal weight;

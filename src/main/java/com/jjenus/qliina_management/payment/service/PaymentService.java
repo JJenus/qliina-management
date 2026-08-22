@@ -10,6 +10,7 @@ import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.dto.OrderSummaryDTO;
 import com.jjenus.qliina_management.order.model.Order;
 import com.jjenus.qliina_management.order.model.OrderItem;
+import com.jjenus.qliina_management.order.model.OrderTimeline;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
 import com.jjenus.qliina_management.payment.dto.*;
 import com.jjenus.qliina_management.payment.model.*;
@@ -135,6 +136,18 @@ public class PaymentService {
         payment.setMetadata(metadata);
         
         payment = paymentRepository.save(payment);
+
+        // Record the collection on the order activity trail (who accepted payment).
+        UUID collectedById = payment.getCollectedBy();
+        OrderTimeline payTimeline = new OrderTimeline();
+        payTimeline.setOrder(order);
+        payTimeline.setType("PAYMENT");
+        payTimeline.setDescription(String.format("Payment of %s %s collected",
+            payment.getAmount(), payment.getMethod()));
+        payTimeline.setTimestamp(LocalDateTime.now());
+        payTimeline.setUserId(collectedById);
+        payTimeline.setUserName(getUserName(collectedById));
+        order.getTimeline().add(payTimeline);
         
         // Update cash drawer if cash payment
         if ("CASH".equals(request.getMethod())) {

@@ -1,6 +1,7 @@
 // ./src/main/java/com/jjenus/qliina_management/reporting/dto/WorkerDashboardDTO.java
 package com.jjenus.qliina_management.reporting.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -114,6 +115,7 @@ public class WorkerDashboardDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ShiftInfoDTO {
+        @JsonProperty("isClockedIn")
         private boolean isClockedIn;
         private LocalDateTime shiftStart;
         private Long minutesElapsed;

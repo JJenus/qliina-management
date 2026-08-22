@@ -166,10 +166,15 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             item.setBarcode(itemTrackingNumber);
             // Resolve catalog UUIDs to human-readable names so the UI never
             // shows raw UUIDs in the service-type / garment-type columns.
-            String resolvedServiceType = serviceTypeRepository.findById(itemDto.getServiceTypeId())
-                    .map(ServiceType::getName)
-                    .orElse(itemDto.getServiceTypeId().toString());
-            item.setServiceType(resolvedServiceType);
+            ServiceType resolvedService = serviceTypeRepository.findById(itemDto.getServiceTypeId()).orElse(null);
+            item.setServiceType(resolvedService != null
+                    ? resolvedService.getName()
+                    : itemDto.getServiceTypeId().toString());
+            item.setServiceTypeId(itemDto.getServiceTypeId());
+            // Iron-only / dry-clean garments skip the washing stage entirely.
+            String svcCategory = resolvedService != null ? resolvedService.getCategory() : null;
+            item.setRequiresWashing(svcCategory == null
+                    || !(svcCategory.equals("IRON") || svcCategory.equals("DRY_CLEAN")));
 
             String resolvedGarmentType = (itemDto.getGarmentTypeId() != null)
                     ? garmentTypeRepository.findById(itemDto.getGarmentTypeId())

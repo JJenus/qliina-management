@@ -88,7 +88,7 @@ public class WorkerDashboardService {
                 .todayMetrics(buildTodayMetrics(workerId, config, todayStart, todayEnd))
                 .periodStats(buildPeriodStats(workerId, config, weekStart, todayEnd))
                 .efficiency(buildEfficiency(workerId))
-                .queueSummary(buildQueueSummary(businessId, worker.getPrimaryShopId(), config))
+                .queueSummary(buildQueueSummary(businessId, worker.getPrimaryShopId(), role, config))
                 .qualityOverview(buildQualityOverview(workerId, todayStart, todayEnd, weekStart, todayEnd))
                 .recentItems(buildRecentItems(workerId, businessId))
                 .shiftInfo(buildShiftInfo(workerId))
@@ -249,15 +249,14 @@ public class WorkerDashboardService {
     }
 
     private WorkerDashboardDTO.QueueSummaryDTO buildQueueSummary(
-            UUID businessId, UUID shopId, RoleQueueConfig config) {
+            UUID businessId, UUID shopId, String role, RoleQueueConfig config) {
 
         int pendingItems = 0;
         int inProgressItems = 0;
 
         if (shopId != null && config.waitingStatuses != null) {
             for (OrderItem.ItemStatus status : config.waitingStatuses) {
-                long count = orderItemRepository.countByBusinessIdAndShopIdAndStatus(
-                        businessId, shopId, status);
+                long count = countWaiting(businessId, shopId, status, "WASHER".equals(role));
                 pendingItems += (int) count;
             }
         }
@@ -273,6 +272,27 @@ public class WorkerDashboardService {
                 .inProgressItems(inProgressItems)
                 .nextStatusLabel(config.actionLabel)
                 .build();
+    }
+
+    /**
+     * Counts items waiting on a role at a given status, honoring the
+     * per-item washing pipeline:
+     *  - RECEIVED counts toward WASHERS only when the item needs washing;
+     *  - RECEIVED counts toward IRONERS only for iron-only (express) items.
+     */
+    private long countWaiting(UUID businessId, UUID shopId, OrderItem.ItemStatus status, boolean washerQueueMode) {
+        if (status != OrderItem.ItemStatus.RECEIVED) {
+            return orderItemRepository.countByBusinessIdAndShopIdAndStatus(businessId, shopId, status);
+        }
+        Long washable = orderItemRepository.countReceivedRequiringWashing(businessId, shopId);
+        if (washerQueueMode) {
+            return washable != null ? washable : 0L;
+        }
+        Long total = orderItemRepository.countByBusinessIdAndShopIdAndStatus(
+                businessId, shopId, status);
+        long all = total != null ? total : 0L;
+        long washReq = washable != null ? washable : 0L;
+        return Math.max(0L, all - washReq);
     }
 
     private WorkerDashboardDTO.QualityOverviewDTO buildQualityOverview(

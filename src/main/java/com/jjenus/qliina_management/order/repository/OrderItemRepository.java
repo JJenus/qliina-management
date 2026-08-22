@@ -46,12 +46,40 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
             @Param("statuses") List<OrderItem.ItemStatus> statuses,
             Pageable pageable);
 
+    /**
+     * Role work queue including in-progress items, honoring the per-item
+     * washing pipeline:
+     *  - washer mode: iron-only items at RECEIVED are excluded;
+     *  - ironer mode: iron-only items at RECEIVED are included (express lane).
+     */
+    @Query("SELECT oi FROM OrderItem oi WHERE oi.order.businessId = :businessId " +
+           "AND (:shopId IS NULL OR oi.order.shopId = :shopId) " +
+           "AND oi.status IN :statuses " +
+           "AND (:washerMode = false OR oi.status <> :receivedStatus OR COALESCE(oi.requiresWashing, true) = true) " +
+           "AND (:ironerMode = false OR oi.status <> :receivedStatus OR COALESCE(oi.requiresWashing, true) = false)")
+    Page<OrderItem> findRoleWorkQueue(
+            @Param("businessId") UUID businessId,
+            @Param("shopId") UUID shopId,
+            @Param("statuses") List<OrderItem.ItemStatus> statuses,
+            @Param("receivedStatus") OrderItem.ItemStatus receivedStatus,
+            @Param("washerMode") boolean washerMode,
+            @Param("ironerMode") boolean ironerMode,
+            Pageable pageable);
+
     @Query("SELECT COUNT(oi) FROM OrderItem oi WHERE oi.order.businessId = :businessId " +
            "AND oi.order.shopId = :shopId AND oi.status = :status")
     long countByBusinessIdAndShopIdAndStatus(
             @Param("businessId") UUID businessId,
             @Param("shopId") UUID shopId,
             @Param("status") OrderItem.ItemStatus status);
+
+    /** Items at reception that must still be washed (excludes iron-only garments). */
+    @Query("SELECT COUNT(oi) FROM OrderItem oi WHERE oi.order.businessId = :businessId " +
+           "AND oi.order.shopId = :shopId AND oi.status = com.jjenus.qliina_management.order.model.OrderItem.ItemStatus.RECEIVED " +
+           "AND COALESCE(oi.requiresWashing, true) = true")
+    Long countReceivedRequiringWashing(
+            @Param("businessId") UUID businessId,
+            @Param("shopId") UUID shopId);
 
     @Query("SELECT COUNT(oi) FROM OrderItem oi JOIN ItemStatusHistory ish ON ish.orderItem.id = oi.id " +
            "WHERE oi.status = :status AND ish.updatedBy = :workerId " +

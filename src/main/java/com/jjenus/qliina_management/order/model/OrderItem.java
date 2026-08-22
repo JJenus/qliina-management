@@ -9,6 +9,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "order_items")
@@ -28,6 +29,18 @@ public class OrderItem extends BaseEntity {
     
     @Column(name = "service_type", nullable = false)
     private String serviceType;
+
+    /** Catalog id the service name was resolved from (null for legacy/quick orders). */
+    @Column(name = "service_type_id")
+    private UUID serviceTypeId;
+
+    /**
+     * Whether this garment must pass through washing before finishing.
+     * Iron-only / dry-clean items go straight from RECEIVED to ironing.
+     * Null-safe default: legacy rows and unknown services are treated as wash-required.
+     */
+    @Column(name = "requires_washing", nullable = false)
+    private Boolean requiresWashing = true;
     
     @Column(name = "garment_type")
     private String garmentType;
