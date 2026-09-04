@@ -145,6 +145,37 @@ distributionUrlNameMain="${distributionUrlNameMain%-bin}"
 MAVEN_USER_HOME="${MAVEN_USER_HOME:-${HOME}/.m2}"
 MAVEN_HOME="${MAVEN_USER_HOME}/wrapper/dists/${distributionUrlNameMain-}/$(hash_string "$distributionUrl")"
 
+# ----------------------------------------------------------------------------
+# Pin this project to Java 21. When JAVA_HOME is not already set to a valid
+# JDK, discover a Java 21 install and export JAVA_HOME so the underlying Maven
+# launcher ($MAVEN_HOME/bin/mvn) runs on Java 21 instead of whatever `java`
+# happens to be first on PATH (e.g. a newer default JDK).
+# ----------------------------------------------------------------------------
+__pin_jdk21() {
+  [ -z "${JAVA_HOME-}" ] || {
+    [ -x "$JAVA_HOME/bin/java" ] && return 0 || return 0
+  }
+  for __cand in \
+    "$HOME/.sdkman/candidates/java" \
+    /usr/lib/jvm/java-21-openjdk-amd64 \
+    /usr/lib/jvm/java-21-openjdk \
+    /usr/lib/jvm/java-21 \
+    /usr/lib/jvm/temurin-21-jdk-amd64 \
+    /usr/lib/jvm/openjdk-21 \
+    /opt/java/openjdk \
+    /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home \
+    /Library/Java/JavaVirtualMachines/zulu-21.jdk/Contents/Home
+  do
+    if [ -x "$__cand/bin/java" ] && [ -x "$__cand/bin/javac" ]; then
+      JAVA_HOME="$__cand"
+      export JAVA_HOME
+      return 0
+    fi
+  done
+  return 0
+}
+__pin_jdk21
+
 exec_maven() {
   unset MVNW_VERBOSE MVNW_USERNAME MVNW_PASSWORD MVNW_REPOURL || :
   exec "$MAVEN_HOME/bin/$MVN_CMD" "$@" || die "cannot exec $MAVEN_HOME/bin/$MVN_CMD"

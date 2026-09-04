@@ -21,6 +21,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -264,7 +265,7 @@ public class WorkerOrderService {
      * PASS  → IRONED/QUALITY_CHECK items become COMPLETED (order may become READY_FOR_PICKUP).
      * FAIL  → item is sent back to WASHING for rework (rewash loop), counted as rework downstream.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyQualityOutcome(UUID businessId, UUID itemId, boolean passed, UUID checkedBy) {
         OrderItem item = orderItemRepository.findById(itemId)
                 .orElseThrow(() -> new BusinessException("Item not found", "ITEM_NOT_FOUND"));

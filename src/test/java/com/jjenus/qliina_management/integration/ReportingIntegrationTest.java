@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -497,6 +499,226 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
                 Map.of(
                         "reportType", "reportType is required",
                         "format", "format is required"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Export – CSV per report type
+    // ---------------------------------------------------------------------
+
+    @Test
+    void export_profitLoss_csv() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "PROFIT_LOSS", "format", "CSV",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PROFIT")));
+    }
+
+    @Test
+    void export_tax_csv() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "TAX", "format", "CSV",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv"));
+    }
+
+    @Test
+    void export_salesByService_csv() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "SALES_BY_SERVICE", "format", "CSV",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv"));
+    }
+
+    @Test
+    void export_employeePerf_csv() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String empToken = createEmployee(ctx, "WASHER");
+        clockIn(ctx, empToken);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "EMPLOYEE_PERF", "format", "CSV",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv"));
+    }
+
+    @Test
+    void export_employeePerformance_alias_csv() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "EMPLOYEE_PERFORMANCE", "format", "CSV",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Export – EXCEL per report type
+    // ---------------------------------------------------------------------
+
+    @Test
+    void export_revenue_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "REVENUE", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().exists("Content-Disposition"));
+    }
+
+    @Test
+    void export_profitLoss_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "PROFIT_LOSS", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    @Test
+    void export_aging_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "AGING", "format", "EXCEL"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    @Test
+    void export_tax_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "TAX", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    @Test
+    void export_salesByService_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "SALES_BY_SERVICE", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    @Test
+    void export_employeePerf_excel() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "EMPLOYEE_PERF", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Export – PDF per report type
+    // ---------------------------------------------------------------------
+
+    @Test
+    void export_revenue_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "REVENUE", "format", "PDF",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    @Test
+    void export_profitLoss_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "PROFIT_LOSS", "format", "PDF",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    @Test
+    void export_aging_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createOrder(ctx);
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "AGING", "format", "PDF"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    @Test
+    void export_tax_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "TAX", "format", "PDF",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    @Test
+    void export_salesByService_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "SALES_BY_SERVICE", "format", "PDF",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    @Test
+    void export_employeePerf_pdf() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "EMPLOYEE_PERF", "format", "PDF",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("%PDF")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Export – Content-Disposition filename format
+    // ---------------------------------------------------------------------
+
+    @Test
+    void export_contentDisposition_filename() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String date = LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "AGING", "format", "CSV"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("aging_" + date + ".csv")));
     }
 
     // ---------------------------------------------------------------------

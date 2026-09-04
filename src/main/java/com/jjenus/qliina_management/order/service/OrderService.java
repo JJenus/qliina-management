@@ -1032,6 +1032,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
                     .images(item.getImages())
                     .statusHistory(historyDTOs)
                     .qualityCheck(qualityCheckDTO)
+                    .requiresWashing(item.getRequiresWashing() == null || item.getRequiresWashing())
                     .build();
             })
             .collect(Collectors.toList());
@@ -1100,6 +1101,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             .userAgent(null)
             .build();
         
+        boolean orderRequiresWashing = itemDTOs.stream().anyMatch(i -> Boolean.TRUE.equals(i.getRequiresWashing()));
+
         return OrderDetailDTO.builder()
             .id(summary.getId())
             .orderNumber(summary.getOrderNumber())
@@ -1120,6 +1123,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
             .createdBy(summary.getCreatedBy())
             .createdAt(summary.getCreatedAt())
             .tags(summary.getTags())
+            .requiresWashing(orderRequiresWashing)
             .items(itemDTOs)
             .discounts(new ArrayList<>())
             .payments(paymentDTOs)

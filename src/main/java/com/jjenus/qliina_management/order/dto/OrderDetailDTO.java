@@ -27,6 +27,7 @@ public class OrderDetailDTO extends OrderSummaryDTO {
     private List<OrderNoteDTO> notes;
     private List<AttachmentDTO> attachments;
     private List<TimelineEventDTO> timeline;
+    private Boolean requiresWashing;
     private MetadataDTO metadata;
     
     @Data
@@ -51,6 +52,7 @@ public class OrderDetailDTO extends OrderSummaryDTO {
         private List<String> images;
         private List<ItemStatusHistoryDTO> statusHistory;
         private QualityCheckDTO qualityCheck;
+        private Boolean requiresWashing;
     }
     
     @Data
