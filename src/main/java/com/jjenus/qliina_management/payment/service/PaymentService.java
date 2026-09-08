@@ -100,6 +100,8 @@ public class PaymentService {
         BigDecimal amount = BigDecimal.valueOf(request.getAmount());
 
         boolean online = isOnlineMethod(request.getMethod());
+        String providerName = request.getProvider() != null ? request.getProvider().trim() : null;
+        boolean providerCharging = online && providerName != null && !providerName.isBlank();
         com.jjenus.qliina_management.payment.provider.PaymentProvider.ChargeResult chargeResult = null;
         boolean settledOnline = false;
 
@@ -113,12 +115,7 @@ public class PaymentService {
         payment.setMethod(request.getMethod());
         payment.setCollectedBy(getCurrentUserId());
 
-        if (online) {
-            String providerName = request.getProvider();
-            if (providerName == null || providerName.isBlank()) {
-                throw new BusinessException("An online payment provider is required for card/transfer payments",
-                        "PAYMENT_PROVIDER_REQUIRED", "provider");
-            }
+        if (providerCharging) {
             String reference = request.getReference() != null ? request.getReference() : "ql_" + UUID.randomUUID();
             payment.setReference(reference);
 
@@ -140,10 +137,18 @@ public class PaymentService {
                 return declinedResult(order, amount, reference, providerName, chargeResult);
             }
         } else {
-            payment.setReference(request.getReference());
+            // Manual record. Card/transfer without a provider are taken externally
+            // (POS terminal, direct bank transfer) and always settle immediately —
+            // no gateway config required. A stable transaction id is synthesized
+            // when the staff did not capture one.
+            String reference = request.getReference();
+            if (reference == null || reference.isBlank()) {
+                reference = "ql_" + UUID.randomUUID();
+            }
+            payment.setReference(reference);
         }
 
-        payment.setStatus((online && !settledOnline) ? "PENDING" : "COMPLETED");
+        payment.setStatus((providerCharging && !settledOnline) ? "PENDING" : "COMPLETED");
         payment.setPaidAt(LocalDateTime.now());
         
         if (request.getTip() != null) {
@@ -251,7 +256,7 @@ public class PaymentService {
     
     @Transactional
     public PaymentResultDTO splitPayment(UUID businessId, UUID orderId, SplitPaymentRequest request) {
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal completedTotal = BigDecimal.ZERO;
         List<String> errors = new ArrayList<>();
         List<PaymentResultDTO> results = new ArrayList<>();
         
@@ -266,22 +271,38 @@ public class PaymentService {
                 
                 PaymentResultDTO result = processPayment(businessId, orderId, paymentRequest);
                 results.add(result);
-                totalAmount = totalAmount.add(BigDecimal.valueOf(split.getAmount()));
+                // Only settled (completed) legs are funds-in; declined legs persist
+                // no payment row and pending authorizations are not settled yet.
+                if ("COMPLETED".equals(result.getStatus())) {
+                    completedTotal = completedTotal.add(BigDecimal.valueOf(split.getAmount()));
+                }
             } catch (Exception e) {
                 errors.add("Failed to process " + split.getMethod() + " payment: " + e.getMessage());
             }
         }
         
-        boolean allSuccess = errors.isEmpty();
+        boolean anyFailed = results.stream().anyMatch(r -> !Boolean.TRUE.equals(r.getSuccess()));
+        boolean anyPending = results.stream().anyMatch(r -> "PENDING".equals(r.getStatus()));
+        boolean allSuccess = errors.isEmpty() && !anyFailed;
+
+        String status;
+        if (!errors.isEmpty() || anyFailed) {
+            status = "PARTIAL";
+        } else if (anyPending) {
+            status = "PENDING";
+        } else {
+            status = "COMPLETED";
+        }
+
         Order order = orderRepository.findById(orderId).orElseThrow();
-        BigDecimal orderTotal = order.getTotalAmount();
-        boolean isFullyPaid = totalAmount.compareTo(orderTotal) >= 0;
-        BigDecimal balanceDue = isFullyPaid ? BigDecimal.ZERO : orderTotal.subtract(totalAmount);
+        BigDecimal orderTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        boolean isFullyPaid = completedTotal.compareTo(orderTotal) >= 0;
+        BigDecimal balanceDue = isFullyPaid ? BigDecimal.ZERO : orderTotal.subtract(completedTotal);
         
         return PaymentResultDTO.builder()
             .success(allSuccess)
-            .amount(totalAmount)
-            .status(allSuccess ? "COMPLETED" : "PARTIAL")
+            .amount(completedTotal)
+            .status(status)
             .balanceDue(balanceDue)
             .isFullyPaid(isFullyPaid)
             .errors(errors)

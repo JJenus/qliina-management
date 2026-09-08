@@ -3,6 +3,9 @@ package com.jjenus.qliina_management.integration;
 import com.jjenus.qliina_management.business.service.ServiceCatalogService;
 import com.jjenus.qliina_management.payment.provider.SimulatorPaymentProvider;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -122,12 +125,65 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
     // ---------------------------------------------------------------------
 
     @Test
-    void processPayment_cardWithoutProvider() throws Exception {
+    void processPayment_cardWithoutProvider_manuallyRecorded() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
         UUID orderId = newOrder(ctx);
-        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
-                ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD")),
-                400, "PAYMENT_PROVIDER_REQUIRED");
+
+        // Brand-new business with no provider config: CARD/TRANSFER are manually
+        // recorded (external POS / direct bank transfer) and settle immediately.
+        String json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "reference", "EXT-POS-4242"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.isFullyPaid").value(true))
+                .andExpect(jsonPath("$.balanceDue").value(0.0))
+                .andExpect(jsonPath("$.provider").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.transactionId").value("EXT-POS-4242"))
+                .andReturn().getResponse().getContentAsString();
+        UUID paymentId = readUuid(json, "$.paymentId");
+
+        // Recorded COMPLETED with the staff reference; no provider identity.
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.method").value("CARD"))
+                .andExpect(jsonPath("$.reference").value("EXT-POS-4242"))
+                .andExpect(jsonPath("$.provider").value(org.hamcrest.Matchers.nullValue()));
+
+        // Not provider-backed: the verify endpoint refuses it.
+        assertProblemDetail(post(providersBase(ctx.businessId()) + "/" + paymentId + "/verify",
+                ctx.accessToken(), null), 400, "NOT_PROVIDER_PAYMENT");
+    }
+
+    @Test
+    void processPayment_transferWithoutProvider_manuallyRecorded() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "TRANSFER", "reference", "TRF-123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.isFullyPaid").value(true))
+                .andExpect(jsonPath("$.transactionId").value("TRF-123"));
+    }
+
+    @Test
+    void processPayment_manualRecordWithoutReference() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        // No reference supplied: a manual record still needs a stable transaction id.
+        String json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "TRANSFER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.transactionId").exists())
+                .andReturn().getResponse().getContentAsString();
+        assertNotNull(readString(json, "$.transactionId"));
+        assertFalse(readString(json, "$.transactionId").isBlank());
     }
 
     @Test
@@ -150,6 +206,19 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
         assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
                 ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "simulator")),
                 400, "PROVIDER_DISABLED");
+    }
+
+    @Test
+    void processPayment_cardEnabledButUnconfigured() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // Enabled for the business but no platform secrets in test env → fail closed.
+        patch(providersBase(ctx.businessId()) + "/flutterwave/enabled?enabled=true", ctx.accessToken(), null)
+                .andExpect(status().isOk());
+
+        UUID orderId = newOrder(ctx);
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "flutterwave")),
+                400, "PROVIDER_NOT_CONFIGURED");
     }
 
     @Test
@@ -195,6 +264,81 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
                     .andExpect(jsonPath("$.totalElements").value(0));
         } finally {
             simulatorPaymentProvider.forceFailure(false);
+        }
+    }
+
+    @Test
+    void splitPayment_declinedCardLegNotCountedAsPaid() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simulatorPaymentProvider.forceFailure(true);
+        try {
+            post(payBase(ctx.businessId()) + "/orders/" + orderId + "/split",
+                    ctx.accessToken(), Map.of("payments", List.of(
+                            Map.of("amount", 3.0, "method", "CASH"),
+                            Map.of("amount", 4.0, "method", "CARD", "provider", "simulator"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.status").value("PARTIAL"))
+                    // Only the settled (completed) leg counts toward paid.
+                    .andExpect(jsonPath("$.amount").value(3.0))
+                    .andExpect(jsonPath("$.isFullyPaid").value(false))
+                    .andExpect(jsonPath("$.balanceDue").value(4.0))
+                    .andExpect(jsonPath("$.errors").isArray());
+
+            // The declined card leg persisted no payment row.
+            get(payBase(ctx.businessId()), ctx.accessToken())
+                    .andExpect(jsonPath("$.totalElements").value(1))
+                    .andExpect(jsonPath("$.content[0].method").value("CASH"))
+                    .andExpect(jsonPath("$.content[0].amount").value(3.0));
+        } finally {
+            simulatorPaymentProvider.forceFailure(false);
+        }
+    }
+
+    @Test
+    void splitPayment_manualCardLegWithoutProvider() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        // No provider configured: a card split leg is manually recorded like cash.
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/split",
+                ctx.accessToken(), Map.of("payments", List.of(
+                        Map.of("amount", 3.0, "method", "CASH"),
+                        Map.of("amount", 4.0, "method", "CARD", "reference", "EXT-4242"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.amount").value(7.0))
+                .andExpect(jsonPath("$.isFullyPaid").value(true))
+                .andExpect(jsonPath("$.balanceDue").value(0.0));
+
+        get(payBase(ctx.businessId()), ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[?(@.method=='CARD')].status").value("COMPLETED"));
+    }
+
+    @Test
+    void splitPayment_redirectPendingLegNotCountedAsPaid() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simulatorPaymentProvider.forceRedirect(true);
+        try {
+            post(payBase(ctx.businessId()) + "/orders/" + orderId + "/split",
+                    ctx.accessToken(), Map.of("payments", List.of(
+                            Map.of("amount", 3.0, "method", "CASH"),
+                            Map.of("amount", 4.0, "method", "CARD", "provider", "simulator"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    // Pending authorizations are not settled funds yet.
+                    .andExpect(jsonPath("$.amount").value(3.0))
+                    .andExpect(jsonPath("$.isFullyPaid").value(false))
+                    .andExpect(jsonPath("$.balanceDue").value(4.0));
+        } finally {
+            simulatorPaymentProvider.forceRedirect(false);
         }
     }
 

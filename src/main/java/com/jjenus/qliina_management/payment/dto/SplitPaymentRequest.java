@@ -22,7 +22,10 @@ public class SplitPaymentRequest {
         
         private Double tip;
 
-        /** Required when method is CARD or TRANSFER: the online provider to charge. */
+        /**
+         * Optional for CARD/TRANSFER splits. Supplied → charge through that provider;
+         * omitted → manual record settling immediately.
+         */
         private String provider;
     }
 }

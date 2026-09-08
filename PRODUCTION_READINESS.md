@@ -10,26 +10,27 @@ record a card/transfer payment manually (external POS, direct bank transfer) —
 providers are configured.** Provider connections are additive, optional business
 config. (Archived previous checklist: `archive/PRODUCTION_READINESS.md`.)
 
-## ⬜ Phase 0 — Manual record restores the always-on core (de-regression)
+## ✅ Phase 0 — Manual record restores the always-on core (de-regression)
 
-- [ ] **Optional `provider` on payment** — `PaymentService.processPayment`:
+- [x] **Optional `provider` on payment** — `PaymentService.processPayment`:
       `provider` is optional for CARD/TRANSFER. Omitted → record the payment as
       `COMPLETED` immediately with the staff-entered reference
-      (last4/authorization/txn id), same accounting path as CASH. Supplied →
+      (last4/authorization/txn id), same accounting path as CASH (blank reference
+      → generated `ql_<uuid>`). Supplied →
       existing charge path unchanged (redirect/PENDING/webhook settle). Keep the
       `PROVIDER_UNKNOWN` / `PROVIDER_DISABLED` / `PROVIDER_NOT_CONFIGURED` 400s
       **only** when a provider is actually supplied — never silently downgrade a
       business that picked a gateway.
-- [ ] **Split legs** — `PaymentService.splitPayment` uses the same optional-
-      provider rule per leg; fix the declined-leg double-counting bug so only
-      successful legs count toward paid totals.
-- [ ] **Invariant** — manual record always available for CARD/TRANSFER with zero
+- [x] **Split legs** — `PaymentService.splitPayment` uses the same optional-
+      provider rule per leg; only `COMPLETED` legs count toward paid totals
+      (declined/pending legs no longer double-count).
+- [x] **Invariant** — manual record always available for CARD/TRANSFER with zero
       provider config; provider presence only *adds* gateway options.
-- [ ] **Tests** — flip `PaymentProviderIntegrationTest.processPayment_cardWithoutProvider`
-      (was 400 `PAYMENT_PROVIDER_REQUIRED`) → `COMPLETED` + order settled; add a
-      no-provider CARD = fully-paid integration case. Keep existing
-      disabled/unknown/unconfigured 400 tests; add a split case with a no-provider
-      leg. Full `./mvnw test` green.
+- [x] **Tests** — `PaymentProviderIntegrationTest.processPayment_cardWithoutProvider`
+      (was 400 `PAYMENT_PROVIDER_REQUIRED`) → `COMPLETED` + order settled; no-provider
+      CARD = fully-paid integration cases (with & without reference); existing
+      disabled/unknown/unconfigured 400 tests kept; split cases with a no-provider
+      leg + declined/pending legs not counted as paid. Full `./mvnw test` green (561).
 
 ## ⬜ Phase 1 — Connection model (advanced per-business config)
 

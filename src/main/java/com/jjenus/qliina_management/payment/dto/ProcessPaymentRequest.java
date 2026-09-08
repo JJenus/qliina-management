@@ -17,7 +17,11 @@ public class ProcessPaymentRequest {
     
     private Double cashReceived;
 
-    /** Required when method is CARD or TRANSFER: the online provider to charge. */
+    /**
+     * Optional for CARD/TRANSFER. Supplied → charge through that online provider
+     * (must be enabled + configured). Omitted → the payment is manually recorded
+     * (external POS / direct bank transfer) and settles immediately.
+     */
     private String provider;
     
     private CardDetails cardDetails;
