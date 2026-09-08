@@ -236,6 +236,91 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
     // ---------------------------------------------------------------------
 
     @Test
+    void processPayment_cardRedirectProvider_pendingNotCounted() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simulatorPaymentProvider.forceRedirect(true);
+        try {
+            // Redirect providers (approved=false + checkoutUrl) persist PENDING and do
+            // NOT count toward the paid balance until the webhook/verify settles them.
+            post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                    ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "simulator"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    .andExpect(jsonPath("$.checkoutUrl").exists())
+                    .andExpect(jsonPath("$.balanceDue").value(7.0))
+                    .andExpect(jsonPath("$.isFullyPaid").value(false))
+                    .andExpect(jsonPath("$.provider").value("simulator"))
+                    .andExpect(jsonPath("$.providerReference").exists());
+        } finally {
+            simulatorPaymentProvider.forceRedirect(false);
+        }
+    }
+
+    @Test
+    void verify_settlesPendingRedirectPayment() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simulatorPaymentProvider.forceRedirect(true);
+        String json;
+        try {
+            json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                    ctx.accessToken(), Map.of("amount", 7.0, "method", "TRANSFER", "provider", "simulator"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    .andReturn().getResponse().getContentAsString();
+        } finally {
+            simulatorPaymentProvider.forceRedirect(false);
+        }
+        UUID paymentId = readUuid(json, "$.paymentId");
+
+        post(providersBase(ctx.businessId()) + "/" + paymentId + "/verify", ctx.accessToken(), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paid").value(true))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        // Settled funds now count — payment flips to COMPLETED, order shows paid.
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.provider").value("simulator"));
+    }
+
+    @Test
+    void webhook_settlesPendingRedirectPayment() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simulatorPaymentProvider.forceRedirect(true);
+        String json;
+        try {
+            json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                    ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "simulator"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    .andReturn().getResponse().getContentAsString();
+        } finally {
+            simulatorPaymentProvider.forceRedirect(false);
+        }
+        String providerReference = readString(json, "$.providerReference");
+
+        mockMvc.perform(MockMvcRequestBuilders
+                .post("/api/v1/webhooks/payments/simulator")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("x-sim-secret", "sim-secret")
+                .content("{\"txn\":\"" + providerReference + "\",\"event\":\"charge.succeeded\","
+                        + "\"amount\":7.0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("received"));
+
+        UUID paymentId = readUuid(json, "$.paymentId");
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
     void webhook_badSignatureRejected() throws Exception {
         ResultActions res = mockMvc.perform(MockMvcRequestBuilders
                 .post("/api/v1/webhooks/payments/simulator")

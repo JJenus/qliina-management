@@ -37,6 +37,9 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     @Getter
     private volatile boolean forceFailure = false;
 
+    /** Test hook — charges return a hosted checkout URL (redirect flow) instead of settling. */
+    private volatile boolean redirectMode = false;
+
     public SimulatorPaymentProvider(
             @Value("${app.payments.providers.simulator.enabled:true}") boolean platformEnabled,
             @Value("${app.payments.providers.simulator.failure-mode:NONE}") String failureMode,
@@ -69,6 +72,13 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     @Override
     public ChargeResult charge(ChargeRequest request) {
         String txnId = "sim_" + UUID.randomUUID();
+        if (redirectMode) {
+            String checkoutUrl = "https://sandbox.simulator.local/checkout/" + txnId;
+            String raw = jsonResponse(txnId, "pending", request.amount(), "pending");
+            log.info("[sim] charge REDIRECT url={} ref={}", checkoutUrl, request.reference());
+            return new ChargeResult(false, txnId, checkoutUrl, BigDecimal.ZERO, "PENDING", raw,
+                    "Awaiting customer authorization");
+        }
         if (!isConfigured() || failAll || forceFailure) {
             String raw = jsonResponse(txnId, "failed", request.amount(), "declined");
             log.info("[sim] charge DECLINED amount={} ref={}", request.amount(), request.reference());
@@ -113,6 +123,11 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     /** Test hook — force the next charges to fail so decline paths can be exercised. */
     public void forceFailure(boolean force) {
         this.forceFailure = force;
+    }
+
+    /** Test hook — charges return a hostless checkout URL so the PENDING/redirect flow is testable. */
+    public void forceRedirect(boolean redirect) {
+        this.redirectMode = redirect;
     }
 
     private String jsonResponse(String txn, String event, BigDecimal amount, String status) {

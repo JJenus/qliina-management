@@ -136,7 +136,7 @@ public class PaymentService {
             payment.setProviderStatus(chargeResult.status());
             settledOnline = chargeResult.approved() && chargeResult.checkoutUrl() == null;
 
-            if (!chargeResult.approved()) {
+            if (!chargeResult.approved() && chargeResult.checkoutUrl() == null) {
                 return declinedResult(order, amount, reference, providerName, chargeResult);
             }
         } else {
