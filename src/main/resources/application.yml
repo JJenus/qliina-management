@@ -17,12 +17,6 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    validate-on-migrate: true
-    baseline-on-migrate: true
-    baseline-version: 0
   cache:
     type: caffeine
     caffeine:
@@ -47,6 +41,10 @@ jwt:
 
 # Billing engine configuration
 app:
+  seed-data:
+    admin:
+      enabled: ${SEED_ADMIN_ENABLED:true}
+      password: ${SEED_ADMIN_PASSWORD:Admin@123}
   billing:
     gateway:
       simulator:
@@ -68,6 +66,33 @@ app:
     outbox:
       max-attempts: ${NOTIFICATION_OUTBOX_MAX_ATTEMPTS:10}
       lease-timeout-ms: ${NOTIFICATION_OUTBOX_LEASE_TIMEOUT_MS:300000}
+    channels:
+      # Sandbox gate for the notification channels (SMS/Push/WhatsApp). The
+      # provider adapters are not wired yet: true (dev/test default) simulates
+      # a successful send; false fails closed (CHANNEL_SEND_UNIMPLEMENTED)
+      # instead of pretending a message was delivered. Prod MUST keep this false.
+      mock-external: ${NOTIFICATION_MOCK_CHANNELS:true}
+  rate-limit:
+    default-limit:
+      capacity: ${RATE_LIMIT_DEFAULT_CAPACITY:100}
+      refill-per-minute: ${RATE_LIMIT_DEFAULT_REFILL:60}
+    login:
+      capacity: ${RATE_LIMIT_LOGIN_CAPACITY:20}
+      refill-per-minute: ${RATE_LIMIT_LOGIN_REFILL:10}
+  payments:
+    currency: ${PAYMENTS_CURRENCY:NGN}
+    providers:
+      simulator:
+        enabled: ${PAYMENTS_SIMULATOR_ENABLED:true} # false in prod (sandbox never live)
+        secret: ${PAYMENTS_SIMULATOR_SECRET:sim-secret}
+        failure-mode: ${PAYMENTS_SIMULATOR_FAILURE_MODE:NONE} # NONE | ALL (tests inject programmatically)
+      paystack:
+        secret-key: ${PAYSTACK_SECRET_KEY:}
+        public-key: ${PAYSTACK_PUBLIC_KEY:}
+      flutterwave:
+        secret-key: ${FLUTTERWAVE_SECRET_KEY:}
+        public-key: ${FLUTTERWAVE_PUBLIC_KEY:}
+        webhook-secret: ${FLUTTERWAVE_WEBHOOK_SECRET:}
 
 # Encryption Configuration
 encryption:

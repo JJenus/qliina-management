@@ -55,4 +55,13 @@ public class OrderPayment extends BaseTenantEntity {
     @Column(name = "metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> metadata;
+
+    @Column(name = "provider", length = 32)
+    private String provider;
+
+    @Column(name = "provider_reference")
+    private String providerReference;
+
+    @Column(name = "provider_status", length = 64)
+    private String providerStatus;
 }

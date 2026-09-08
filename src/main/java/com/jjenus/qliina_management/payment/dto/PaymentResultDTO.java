@@ -24,4 +24,8 @@ public class PaymentResultDTO {
     private String receiptUrl;
     private BigDecimal change;
     private List<String> errors;
+    private String message;
+    private String checkoutUrl;
+    private String provider;
+    private String providerReference;
 }

@@ -162,7 +162,7 @@ public class BusinessService {
         // 9. Assign BUSINESS_ADMIN role (business-level, shopId = null)
         Role ownerRole = roleRepository.findByName("BUSINESS_ADMIN")
                 .orElseThrow(() -> new BusinessException(
-                        "BUSINESS_ADMIN role not found — ensure DataInitializer has run",
+                        "BUSINESS_ADMIN role not found — ensure the platform has been bootstrapped",
                         "ROLE_NOT_FOUND"));
         UserRole userRole = new UserRole();
         userRole.setUser(user); userRole.setRole(ownerRole);

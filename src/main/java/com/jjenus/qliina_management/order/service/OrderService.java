@@ -78,6 +78,16 @@ public class OrderService {
             .orElse("User " + userId.toString().substring(0, 8));
     }
 
+    /** Loads an order and enforces that it belongs to the calling business. */
+    private Order getOwnedOrder(UUID businessId, UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        if (!order.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Order not found", "ORDER_NOT_FOUND");
+        }
+        return order;
+    }
+
     private void recordItemInteraction(UUID itemId, UUID userId, String accessMethod) {
         if (userId == null) return;
         var existing = interactionRepository.findByWorkerIdAndItemId(userId, itemId);
@@ -105,10 +115,8 @@ public class OrderService {
     }
     
     @Transactional(readOnly = true)
-    public OrderDetailDTO getOrder(UUID orderId) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
-        return mapToDetailDTO(order);
+    public OrderDetailDTO getOrder(UUID businessId, UUID orderId) {
+        return mapToDetailDTO(getOwnedOrder(businessId, orderId));
     }
     
     public Long countPendingOrders(UUID businessId, UUID shopId) {
@@ -120,9 +128,12 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
 }
     
     @Transactional(readOnly = true)
-    public OrderDetailDTO getOrderByTrackingNumber(String trackingNumber) {
+    public OrderDetailDTO getOrderByTrackingNumber(UUID businessId, String trackingNumber) {
         Order order = orderRepository.findByTrackingNumber(trackingNumber)
             .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        if (!order.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Order not found", "ORDER_NOT_FOUND");
+        }
         return mapToDetailDTO(order);
     }
     
@@ -318,9 +329,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
     
     @Transactional
-    public OrderDetailDTO updateOrder(UUID orderId, UpdateOrderRequest request) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public OrderDetailDTO updateOrder(UUID businessId, UUID orderId, UpdateOrderRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         if (request.getPriority() != null) {
             order.setPriority(Order.Priority.valueOf(request.getPriority()));
@@ -359,9 +369,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
     
     @Transactional
-    public void cancelOrder(UUID orderId, CancelOrderRequest request) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public void cancelOrder(UUID businessId, UUID orderId, CancelOrderRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         if (order.getStatus() == Order.OrderStatus.COMPLETED) {
             throw new BusinessException("Cannot cancel completed order", "ORDER_ALREADY_COMPLETED");
@@ -400,9 +409,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
      * Validates that the status transition is allowed before proceeding.
      */
     @Transactional
-    public OrderStatusDTO updateOrderStatus(UUID orderId, UpdateStatusRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public OrderStatusDTO updateOrderStatus(UUID businessId, UUID orderId, UpdateStatusRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
     
         Order.OrderStatus previousStatus = order.getStatus();
         Order.OrderStatus newStatus = Order.OrderStatus.valueOf(request.getStatus());
@@ -498,9 +506,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
         
     @Transactional
-    public OrderItemStatusDTO updateItemStatus(UUID orderId, UUID itemId, UpdateItemStatusRequest request) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public OrderItemStatusDTO updateItemStatus(UUID businessId, UUID orderId, UUID itemId, UpdateItemStatusRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         OrderItem item = order.getItems().stream()
             .filter(i -> i.getId().equals(itemId))
@@ -541,9 +548,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
     
     @Transactional(readOnly = true)
-    public List<TimelineEventDTO> getOrderTimeline(UUID orderId) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public List<TimelineEventDTO> getOrderTimeline(UUID businessId, UUID orderId) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         return order.getTimeline().stream()
             .map(event -> TimelineEventDTO.builder()
@@ -560,9 +566,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
     
     @Transactional
-    public OrderNoteDTO addOrderNote(UUID orderId, AddNoteRequest request) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public OrderNoteDTO addOrderNote(UUID businessId, UUID orderId, AddNoteRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         OrderNote note = new OrderNote();
         note.setOrder(order);
@@ -595,8 +600,7 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
      */
     @Transactional
     public OrderDetailDTO returnOrder(UUID businessId, UUID orderId, ReturnOrderRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        Order order = getOwnedOrder(businessId, orderId);
 
         if (order.getStatus() != Order.OrderStatus.COMPLETED
                 && order.getStatus() != Order.OrderStatus.OUT_FOR_DELIVERY) {
@@ -754,9 +758,8 @@ public Long countOrdersByDateRange(UUID businessId, UUID shopId, LocalDateTime s
     }
     
     @Transactional
-    public OrderDetailDTO transferOrder(UUID orderId, TransferOrderRequest request) {
-        Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+    public OrderDetailDTO transferOrder(UUID businessId, UUID orderId, TransferOrderRequest request) {
+        Order order = getOwnedOrder(businessId, orderId);
         
         UUID previousShopId = order.getShopId();
         order.setShopId(request.getTargetShopId());

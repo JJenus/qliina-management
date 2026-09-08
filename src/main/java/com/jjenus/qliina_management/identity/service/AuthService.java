@@ -25,13 +25,19 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Handles authentication, session management, and password operations.
@@ -126,8 +132,15 @@ public class AuthService {
     public AuthResponse verify2FA(Verify2FARequest request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
-        if (!verifyTOTP(user.getAuthAccount().getTotpSecret(), request.getCode())) {
+        if (user.getAuthAccount() == null
+                || !verifyTOTP(user.getAuthAccount().getTotpSecret(), request.getCode())) {
             throw new BusinessException("Invalid 2FA code", "INVALID_2FA_CODE");
+        }
+        // First successful verification also ENROLLS: setup2FA stores the secret
+        // with totpEnabled=false; this flips it so future logins gate on 2FA.
+        if (!Boolean.TRUE.equals(user.getAuthAccount().getTotpEnabled())) {
+            user.getAuthAccount().setTotpEnabled(true);
+            authAccountRepository.save(user.getAuthAccount());
         }
         updateLastLogin(user);
         clearFailedAttempts(user);
@@ -344,7 +357,71 @@ public class AuthService {
     }
 
     private boolean verifyTOTP(String secret, String code) {
-        throw new BusinessException("2FA verification not fully implemented.", "TOTP_NOT_IMPLEMENTED");
+        if (secret == null || secret.isBlank() || code == null || code.isBlank()) {
+            return false;
+        }
+        byte[] key = base32Decode(secret);
+        long counter = Instant.now().getEpochSecond() / 30L;
+        // RFC 6238 — accept the current 30s window plus one step either side
+        // to tolerate clock drift at login.
+        for (long offset = -1; offset <= 1; offset++) {
+            if (constantTimeEquals(generateTOTP(key, counter + offset), code)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String generateTOTP(byte[] key, long counter) {
+        byte[] data = new byte[8];
+        for (int i = 7; i >= 0; i--) {
+            data[i] = (byte) (counter & 0xff);
+            counter >>= 8;
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(new SecretKeySpec(key, "HmacSHA1"));
+            byte[] hash = mac.doFinal(data);
+            int offset = hash[hash.length - 1] & 0x0f;
+            int binary = ((hash[offset] & 0x7f) << 24)
+                    | ((hash[offset + 1] & 0xff) << 16)
+                    | ((hash[offset + 2] & 0xff) << 8)
+                    | (hash[offset + 3] & 0xff);
+            return String.format("%06d", binary % 1_000_000);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("TOTP generation failed", e);
+        }
+    }
+
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a.length() != b.length()) {
+            return false;
+        }
+        int diff = 0;
+        for (int i = 0; i < a.length(); i++) {
+            diff |= a.charAt(i) ^ b.charAt(i);
+        }
+        return diff == 0;
+    }
+
+    private byte[] base32Decode(String secret) {
+        String normalized = secret.replace("-", "").replace(" ", "").toUpperCase();
+        ByteArrayOutputStream decoded = new ByteArrayOutputStream();
+        int buffer = 0;
+        int bits = 0;
+        for (int i = 0; i < normalized.length(); i++) {
+            int value = B32.indexOf(normalized.charAt(i));
+            if (value < 0) {
+                continue; // tolerate stray padding/invalid chars
+            }
+            buffer = (buffer << 5) | value;
+            bits += 5;
+            if (bits >= 8) {
+                decoded.write((buffer >> (bits - 8)) & 0xff);
+                bits -= 8;
+            }
+        }
+        return decoded.toByteArray();
     }
 
     private String generateSecureToken() {

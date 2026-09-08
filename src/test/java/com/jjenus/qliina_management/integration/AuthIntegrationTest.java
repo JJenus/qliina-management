@@ -429,11 +429,62 @@ class AuthIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void verify2fa_notImplemented_returns400() throws Exception {
+    void verify2fa_validCode_issuesTokens() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
+        MvcResult setup = post("/api/v1/auth/setup-2fa", null, Map.of("userId", ctx.userId().toString()))
+                .andExpect(status().isOk())
+                .andReturn();
+        String secret = com.jayway.jsonpath.JsonPath.read(
+                setup.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.secret");
+
+        String code = totpCode(secret, 0);
+        post("/api/v1/auth/verify-2fa", null, Map.of("userId", ctx.userId().toString(), "code", code))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.requires2FA").value(false));
+    }
+
+    @Test
+    void verify2fa_invalidCode_returns400() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        post("/api/v1/auth/setup-2fa", null, Map.of("userId", ctx.userId().toString()))
+                .andExpect(status().isOk());
         assertProblemDetail(post("/api/v1/auth/verify-2fa", null, Map.of(
                 "userId", ctx.userId().toString(),
-                "code", "123456")), 400, "TOTP_NOT_IMPLEMENTED");
+                "code", "000000")), 400, "INVALID_2FA_CODE");
+    }
+
+    @Test
+    void login_gatesOn2faAfterEnrollment_andVerifyPasses() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String username = ctx.username();
+        String password = ctx.password();
+
+        MvcResult setup = post("/api/v1/auth/setup-2fa", null, Map.of("userId", ctx.userId().toString()))
+                .andExpect(status().isOk())
+                .andReturn();
+        String secret = com.jayway.jsonpath.JsonPath.read(
+                setup.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.secret");
+
+        // Enrollment: first successful verify flips totpEnabled=true.
+        post("/api/v1/auth/verify-2fa", null, Map.of("userId", ctx.userId().toString(), "code", totpCode(secret, 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+
+        // Next login is now gated: no tokens, requires2FA=true.
+        post("/api/v1/auth/login", null, Map.of("username", username, "password", password))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requires2FA").value(true))
+                .andExpect(jsonPath("$.accessToken").doesNotExist());
+
+        // A fresh code from the same secret completes login.
+        post("/api/v1/auth/login", null, Map.of("username", username, "password", password))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requires2FA").value(true));
+        post("/api/v1/auth/verify-2fa", null, Map.of("userId", ctx.userId().toString(), "code", totpCode(secret, 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.requires2FA").value(false));
     }
 
     @Test
@@ -461,6 +512,48 @@ class AuthIntegrationTest extends BaseIntegrationTest {
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
+
+    /** RFC 6238 TOTP (HMAC-SHA1, 30s step, 6 digits) at a step offset from now. */
+    private static String totpCode(String base32Secret, long counterOffset) throws Exception {
+        byte[] key = base32Decode(base32Secret);
+        long counter = java.time.Instant.now().getEpochSecond() / 30L + counterOffset;
+        byte[] data = new byte[8];
+        for (int i = 7; i >= 0; i--) {
+            data[i] = (byte) (counter & 0xff);
+            counter >>= 8;
+        }
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA1");
+        mac.init(new javax.crypto.spec.SecretKeySpec(key, "HmacSHA1"));
+        byte[] hash = mac.doFinal(data);
+        int offset = hash[hash.length - 1] & 0x0f;
+        int binary = ((hash[offset] & 0x7f) << 24)
+                | ((hash[offset + 1] & 0xff) << 16)
+                | ((hash[offset + 2] & 0xff) << 8)
+                | (hash[offset + 3] & 0xff);
+        return String.format("%06d", binary % 1_000_000);
+    }
+
+    private static final String B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    private static byte[] base32Decode(String secret) {
+        String normalized = secret.replace("-", "").replace(" ", "").toUpperCase();
+        java.io.ByteArrayOutputStream decoded = new java.io.ByteArrayOutputStream();
+        int buffer = 0;
+        int bits = 0;
+        for (int i = 0; i < normalized.length(); i++) {
+            int value = B32.indexOf(normalized.charAt(i));
+            if (value < 0) {
+                continue;
+            }
+            buffer = (buffer << 5) | value;
+            bits += 5;
+            if (bits >= 8) {
+                decoded.write((buffer >> (bits - 8)) & 0xff);
+                bits -= 8;
+            }
+        }
+        return decoded.toByteArray();
+    }
 
     private Map<String, Object> validRegistrationBody(String unique) {
         Map<String, Object> body = new HashMap<>();

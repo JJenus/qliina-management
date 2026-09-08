@@ -160,7 +160,7 @@ class PaymentIntegrationTest extends BaseIntegrationTest {
         UUID orderId = createOrder(ctx);
 
         post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
-                ctx.accessToken(), Map.of("amount", 3.0, "method", "CARD"))
+                ctx.accessToken(), Map.of("amount", 3.0, "method", "CARD", "provider", "simulator"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.balanceDue").value(4.0))
@@ -168,7 +168,7 @@ class PaymentIntegrationTest extends BaseIntegrationTest {
 
         // Remaining balance can be settled.
         post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
-                ctx.accessToken(), Map.of("amount", 4.0, "method", "TRANSFER"))
+                ctx.accessToken(), Map.of("amount", 4.0, "method", "TRANSFER", "provider", "simulator"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isFullyPaid").value(true))
                 .andExpect(jsonPath("$.balanceDue").value(0.0));
@@ -220,7 +220,7 @@ class PaymentIntegrationTest extends BaseIntegrationTest {
 
         Map<String, Object> body = Map.of("payments", List.of(
                 Map.of("amount", 3.0, "method", "CASH"),
-                Map.of("amount", 4.0, "method", "CARD")));
+                Map.of("amount", 4.0, "method", "CARD", "provider", "simulator")));
 
         post(payBase(ctx.businessId()) + "/orders/" + orderId + "/split",
                 ctx.accessToken(), body)

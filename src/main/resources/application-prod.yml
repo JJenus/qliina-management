@@ -10,24 +10,58 @@ spring:
     show-sql: false
     hibernate:
       ddl-auto: validate
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    validate-on-migrate: true
-    baseline-on-migrate: true
-    baseline-version: 0
 
 logging:
   level:
     com.jjenus.qliina_management: INFO
     org.springframework: WARN
 
+# All secrets MUST come from the environment in prod — placeholders below carry
+# no default, so boot fails fast instead of silently using a committed value.
+jwt:
+  secret: ${JWT_SECRET}
+
 server:
   port: ${PORT:8080}
 
+app:
+  # Platform-admin bootstrap is OFF in prod by default — override with
+  # SEED_ADMIN_ENABLED for a first-time bootstrap only. Password is blank by
+  # default: set SEED_ADMIN_PASSWORD or the seeder fails fast (the committed
+  # convenience default is never used in prod). Permissions, roles and billing
+  # plans (credential-free reference data) always seed in every profile.
+  seed-data:
+    admin:
+      enabled: ${SEED_ADMIN_ENABLED:false}
+      password: ${SEED_ADMIN_PASSWORD:}
+  billing:
+    gateway:
+      simulator:
+        secret: ${BILLING_GATEWAY_SECRET}
+  notification:
+    channels:
+      # SMS/Push/WhatsApp adapters are not wired in prod yet — fail closed
+      # (CHANNEL_SEND_UNIMPLEMENTED) rather than silently faking deliveries.
+      mock-external: false
+  payments:
+    currency: ${PAYMENTS_CURRENCY:NGN}
+    providers:
+      simulator:
+        # Sandbox checkout is never live in prod. Flip only for staging-ish hosts.
+        enabled: ${PAYMENTS_SIMULATOR_ENABLED:false}
+        secret: ${PAYMENTS_SIMULATOR_SECRET}
+      paystack:
+        secret-key: ${PAYSTACK_SECRET_KEY:}
+        public-key: ${PAYSTACK_PUBLIC_KEY:}
+      flutterwave:
+        secret-key: ${FLUTTERWAVE_SECRET_KEY:}
+        public-key: ${FLUTTERWAVE_PUBLIC_KEY:}
+        # verif-hash set in the Flutterwave dashboard; without it webhooks fail closed.
+        webhook-secret: ${FLUTTERWAVE_WEBHOOK_SECRET:}
+
 encryption:
-  secret: ${ENCRYPTION_SECRET:tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=}
-  salt: ${ENCRYPTION_SALT:f14ecc5ca42ba522a1f5a38df1564282}
+  secret: ${ENCRYPTION_SECRET}
+  salt: ${ENCRYPTION_SALT}
   iteration-count: 65536
   key-length: 256
   enabled: true

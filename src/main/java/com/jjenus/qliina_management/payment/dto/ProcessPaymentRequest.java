@@ -16,6 +16,9 @@ public class ProcessPaymentRequest {
     private Double tip;
     
     private Double cashReceived;
+
+    /** Required when method is CARD or TRANSFER: the online provider to charge. */
+    private String provider;
     
     private CardDetails cardDetails;
     

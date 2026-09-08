@@ -10,7 +10,7 @@ import java.util.UUID;
  *       WebSocketTopics.orderUpdates(businessId), payload);
  *
  *   messagingTemplate.convertAndSendToUser(
- *       userId.toString(),
+ *       username,
  *       WebSocketTopics.USER_NOTIFICATIONS_SUFFIX,
  *       payload);
  */
@@ -35,8 +35,8 @@ public final class WebSocketTopics {
     }
 
     /**
-     * Used with convertAndSendToUser(userId, USER_NOTIFICATIONS_SUFFIX, payload).
-     * The broker routes this to /queue/notifications on the client.
+     * User destination constant for convertAndSendToUser(user, USER_NOTIFICATIONS_SUFFIX, payload).
+     * The client subscribes to /user/queue/notifications.
      */
-    public static final String USER_NOTIFICATIONS_SUFFIX = "/notifications";
+    public static final String USER_NOTIFICATIONS_SUFFIX = "/queue/notifications";
 }

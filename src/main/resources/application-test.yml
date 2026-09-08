@@ -8,8 +8,6 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: create-drop
-  flyway:
-    enabled: false
   h2:
     console:
       enabled: true
@@ -17,6 +15,16 @@ spring:
 # Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
 # Integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false).
 app:
+  rate-limit:
+    # Generous budgets so the shared integration-test contexts (one shared
+    # 127.0.0.1 client IP) never trip. The dedicated 429 test overrides these
+    # down via @TestPropertySource.
+    default-limit:
+      capacity: 100000
+      refill-per-minute: 60000
+    login:
+      capacity: 10000
+      refill-per-minute: 5000
   seed-demo:
     enabled: true   # integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false)
   notification:

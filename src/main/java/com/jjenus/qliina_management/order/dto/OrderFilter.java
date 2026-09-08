@@ -20,4 +20,5 @@ public class OrderFilter {
     private String priority;
     private String tag;
     private Boolean hasIssue;
+    private String search;
 }

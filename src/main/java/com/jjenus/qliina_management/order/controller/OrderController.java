@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.order.controller;
 
+import com.jjenus.qliina_management.common.BusinessException;
 import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.common.SuccessResponse;
@@ -78,7 +79,7 @@ public class OrderController {
             
             @Parameter(description = "Order ID", required = true)
             @PathVariable UUID orderId) {
-        return ResponseEntity.ok(orderService.getOrder(orderId));
+        return ResponseEntity.ok(orderService.getOrder(businessId, orderId));
     }
     
     @Operation(
@@ -98,7 +99,7 @@ public class OrderController {
             
             @Parameter(description = "Tracking number", required = true, example = "TRK12345678")
             @PathVariable String trackingNumber) {
-        return ResponseEntity.ok(orderService.getOrderByTrackingNumber(trackingNumber));
+        return ResponseEntity.ok(orderService.getOrderByTrackingNumber(businessId, trackingNumber));
     }
     
     @Operation(
@@ -159,7 +160,7 @@ public class OrderController {
             @PathVariable UUID orderId,
             
             @Valid @RequestBody UpdateOrderRequest request) {
-        return ResponseEntity.ok(orderService.updateOrder(orderId, request));
+        return ResponseEntity.ok(orderService.updateOrder(businessId, orderId, request));
     }
     
     @Operation(
@@ -182,7 +183,7 @@ public class OrderController {
             @PathVariable UUID orderId,
             
             @Valid @RequestBody CancelOrderRequest request) {
-        orderService.cancelOrder(orderId, request);
+        orderService.cancelOrder(businessId, orderId, request);
         return ResponseEntity.ok(SuccessResponse.of("Order cancelled successfully"));
     }
     
@@ -208,7 +209,7 @@ public class OrderController {
             @PathVariable UUID orderId,
             
             @Valid @RequestBody UpdateStatusRequest request) {
-        return ResponseEntity.ok(orderService.updateOrderStatus(orderId, request));
+        return ResponseEntity.ok(orderService.updateOrderStatus(businessId, orderId, request));
     }
     
     @Operation(
@@ -234,7 +235,7 @@ public class OrderController {
             @PathVariable UUID itemId,
             
             @Valid @RequestBody UpdateItemStatusRequest request) {
-        return ResponseEntity.ok(orderService.updateItemStatus(orderId, itemId, request));
+        return ResponseEntity.ok(orderService.updateItemStatus(businessId, orderId, itemId, request));
     }
     
     // ======= Timeline & Notes =======
@@ -256,7 +257,7 @@ public class OrderController {
             
             @Parameter(description = "Order ID", required = true)
             @PathVariable UUID orderId) {
-        return ResponseEntity.ok(orderService.getOrderTimeline(orderId));
+        return ResponseEntity.ok(orderService.getOrderTimeline(businessId, orderId));
     }
     
     @Operation(
@@ -278,7 +279,7 @@ public class OrderController {
             @PathVariable UUID orderId,
             
             @Valid @RequestBody AddNoteRequest request) {
-        return ResponseEntity.ok(orderService.addOrderNote(orderId, request));
+        return ResponseEntity.ok(orderService.addOrderNote(businessId, orderId, request));
     }
     
     // ======= Transfer Operations =======
@@ -303,7 +304,7 @@ public class OrderController {
             @PathVariable UUID orderId,
             
             @Valid @RequestBody TransferOrderRequest request) {
-        return ResponseEntity.ok(orderService.transferOrder(orderId, request));
+        return ResponseEntity.ok(orderService.transferOrder(businessId, orderId, request));
     }
     
     // ======= Analytics & Reporting =======
@@ -400,8 +401,10 @@ public class OrderController {
             
             @Parameter(description = "Attachment type (RECEIPT, IMAGE, DOCUMENT)", required = true, example = "RECEIPT")
             @RequestParam("type") String type) {
-        // Implementation would handle file upload
-        return ResponseEntity.ok(new AttachmentDTO());
+        // No storage backend is configured yet — fail closed instead of silently
+        // discarding the uploaded file (the old stub returned a fresh empty DTO).
+        throw new BusinessException("Attachment storage is not configured yet; order attachments are rejected until a storage backend lands",
+                "ATTACHMENTS_UNSUPPORTED");
     }
     
     @Operation(
@@ -424,8 +427,9 @@ public class OrderController {
             
             @Parameter(description = "Attachment ID", required = true)
             @PathVariable UUID attachmentId) {
-        // Implementation would handle attachment deletion
-        return ResponseEntity.ok(SuccessResponse.of("Attachment deleted successfully"));
+        // No storage backend is configured yet — fail closed (matching upload).
+        throw new BusinessException("Attachment storage is not configured yet; order attachments are rejected until a storage backend lands",
+                "ATTACHMENTS_UNSUPPORTED");
     }
     
     // ======= Customer Returns =======

@@ -1,5 +1,7 @@
 package com.jjenus.qliina_management.common.websocket;
 
+import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -21,6 +23,7 @@ import java.util.UUID;
 public class WebSocketPublisher {
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserRepository         userRepository;
 
     // ----------------------------------------------------------------
     // Order module -- broadcast to all sessions in a business
@@ -68,21 +71,30 @@ public class WebSocketPublisher {
 
     /**
      * Sends an in-app notification to one user's private STOMP queue.
-     * The client subscribes to /queue/notifications.
+     * The client subscribes to /user/queue/notifications.
      *
-     * @param userId  target user UUID (must match the JWT principal name)
+     * @param userId  target user UUID
      * @param payload notification DTO
      */
     @Async
     public void publishUserNotification(UUID userId, Object payload) {
+        // STOMP user destinations resolve against the principal NAME, which for
+        // this app is the username, not the userId UUID.
+        String username = userRepository.findById(userId)
+                .map(User::getUsername)
+                .orElse(null);
+        if (username == null) {
+            log.warn("Cannot push in-app notification to unknown user {}; skipped", userId);
+            return;
+        }
         try {
             messagingTemplate.convertAndSendToUser(
-                    userId.toString(),
+                    username,
                     WebSocketTopics.USER_NOTIFICATIONS_SUFFIX,
                     payload);
-            log.debug("Pushed in-app notification to user {}", userId);
+            log.debug("Pushed in-app notification to user {} ({})", username, userId);
         } catch (Exception e) {
-            log.error("Failed to push in-app notification to user {}: {}", userId, e.getMessage());
+            log.error("Failed to push in-app notification to user {}: {}", username, e.getMessage());
         }
     }
 

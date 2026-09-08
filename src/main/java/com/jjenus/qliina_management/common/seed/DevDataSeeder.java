@@ -65,8 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Seeds a realistic demo tenant ("Qliina Demo Laundry") on the H2-backed
- * profiles (test). Runs after {@link DataInitializer} so all roles and
- * permissions already exist.
+ * profiles (test). Runs after {@link PermissionSeeder}/{@link RoleSeeder} so
+ * all roles and permissions already exist.
  *
  * Idempotent: if the demo business (slug {@code qliina-demo}) already exists,
  * the whole seed is skipped. Disable with {@code app.seed-demo.enabled=false}
@@ -84,7 +84,7 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Component
-@org.springframework.core.annotation.Order(2)
+@org.springframework.core.annotation.Order(10)
 @Profile({"dev", "test", "seed"})
 @ConditionalOnProperty(prefix = "app.seed-demo", name = "enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor

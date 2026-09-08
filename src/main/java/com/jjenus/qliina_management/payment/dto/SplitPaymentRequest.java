@@ -21,5 +21,8 @@ public class SplitPaymentRequest {
         private String reference;
         
         private Double tip;
+
+        /** Required when method is CARD or TRANSFER: the online provider to charge. */
+        private String provider;
     }
 }

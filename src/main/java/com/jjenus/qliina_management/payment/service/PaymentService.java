@@ -54,6 +54,7 @@ public class PaymentService {
     private final UserRepository userRepository;
 
     private final EncryptionService encryptionService;
+    private final PaymentProviderService paymentProviderService;
     
     private UUID getCurrentUserId() {
         try {
@@ -97,7 +98,11 @@ public class PaymentService {
             .orElseThrow(() -> new BusinessException("Invalid payment method", "INVALID_PAYMENT_METHOD"));
         
         BigDecimal amount = BigDecimal.valueOf(request.getAmount());
-        
+
+        boolean online = isOnlineMethod(request.getMethod());
+        com.jjenus.qliina_management.payment.provider.PaymentProvider.ChargeResult chargeResult = null;
+        boolean settledOnline = false;
+
         // Create payment record
         OrderPayment payment = new OrderPayment();
         payment.setBusinessId(businessId);
@@ -106,10 +111,40 @@ public class PaymentService {
         payment.setCustomerId(order.getCustomerId());
         payment.setAmount(amount);
         payment.setMethod(request.getMethod());
-        payment.setReference(request.getReference());
-        payment.setStatus("COMPLETED");
-        payment.setPaidAt(LocalDateTime.now());
         payment.setCollectedBy(getCurrentUserId());
+
+        if (online) {
+            String providerName = request.getProvider();
+            if (providerName == null || providerName.isBlank()) {
+                throw new BusinessException("An online payment provider is required for card/transfer payments",
+                        "PAYMENT_PROVIDER_REQUIRED", "provider");
+            }
+            String reference = request.getReference() != null ? request.getReference() : "ql_" + UUID.randomUUID();
+            payment.setReference(reference);
+
+            Customer customer = order.getCustomerId() != null
+                    ? customerRepository.findById(order.getCustomerId()).orElse(null) : null;
+            String customerEmail = customer != null ? customer.getEmail() : null;
+            String customerName = customer != null
+                    ? (customer.getFirstName() + " " + (customer.getLastName() != null
+                            ? customer.getLastName() : "")).trim()
+                    : null;
+            chargeResult = paymentProviderService.chargeOnline(businessId, providerName, amount,
+                    customerEmail, customerName, reference);
+            payment.setProvider(providerName);
+            payment.setProviderReference(chargeResult.providerReference());
+            payment.setProviderStatus(chargeResult.status());
+            settledOnline = chargeResult.approved() && chargeResult.checkoutUrl() == null;
+
+            if (!chargeResult.approved()) {
+                return declinedResult(order, amount, reference, providerName, chargeResult);
+            }
+        } else {
+            payment.setReference(request.getReference());
+        }
+
+        payment.setStatus((online && !settledOnline) ? "PENDING" : "COMPLETED");
+        payment.setPaidAt(LocalDateTime.now());
         
         if (request.getTip() != null) {
             payment.setTip(BigDecimal.valueOf(request.getTip()));
@@ -133,17 +168,21 @@ public class PaymentService {
             metadata.put("walletProvider", request.getWalletDetails().getProvider());
             metadata.put("walletTransactionId", request.getWalletDetails().getTransactionId());
         }
+        if (chargeResult != null && chargeResult.checkoutUrl() != null) {
+            metadata.put("checkoutUrl", chargeResult.checkoutUrl());
+        }
         payment.setMetadata(metadata);
         
         payment = paymentRepository.save(payment);
 
-        // Record the collection on the order activity trail (who accepted payment).
+        // Record the payment on the order activity trail (who accepted payment).
         UUID collectedById = payment.getCollectedBy();
         OrderTimeline payTimeline = new OrderTimeline();
         payTimeline.setOrder(order);
         payTimeline.setType("PAYMENT");
-        payTimeline.setDescription(String.format("Payment of %s %s collected",
-            payment.getAmount(), payment.getMethod()));
+        payTimeline.setDescription(String.format("Payment of %s %s %s",
+            payment.getAmount(), payment.getMethod(),
+            "COMPLETED".equals(payment.getStatus()) ? "collected" : "initiated for authorization"));
         payTimeline.setTimestamp(LocalDateTime.now());
         payTimeline.setUserId(collectedById);
         payTimeline.setUserName(getUserName(collectedById));
@@ -154,8 +193,13 @@ public class PaymentService {
             updateCashDrawer(businessId, order.getShopId(), payment);
         }
         
-        // Calculate new balance
-        BigDecimal totalPaid = paymentRepository.sumPaymentsByOrderId(orderId);
+        // Calculate new balance (pending authorizations are not settled funds yet)
+        BigDecimal totalPaid;
+        if (online && "PENDING".equals(payment.getStatus())) {
+            totalPaid = paymentRepository.sumCompletedPaymentsByOrderId(orderId);
+        } else {
+            totalPaid = paymentRepository.sumPaymentsByOrderId(orderId);
+        }
         BigDecimal orderTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
         
         boolean isFullyPaid = totalPaid.compareTo(orderTotal) >= 0;
@@ -176,6 +220,32 @@ public class PaymentService {
             .transactionId(payment.getReference())
             .receiptUrl(generateReceiptUrl(payment))
             .change(payment.getChangeAmount())
+            .provider(payment.getProvider())
+            .providerReference(payment.getProviderReference())
+            .checkoutUrl(chargeResult != null ? chargeResult.checkoutUrl() : null)
+            .build();
+    }
+
+    private boolean isOnlineMethod(String method) {
+        return "CARD".equals(method) || "TRANSFER".equals(method);
+    }
+
+    private PaymentResultDTO declinedResult(Order order, BigDecimal amount, String reference,
+            String providerName,
+            com.jjenus.qliina_management.payment.provider.PaymentProvider.ChargeResult chargeResult) {
+        BigDecimal orderTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal totalPaid = paymentRepository.sumCompletedPaymentsByOrderId(order.getId());
+        boolean isFullyPaid = totalPaid.compareTo(orderTotal) >= 0;
+        return PaymentResultDTO.builder()
+            .success(false)
+            .amount(amount)
+            .status("FAILED")
+            .balanceDue(isFullyPaid ? BigDecimal.ZERO : orderTotal.subtract(totalPaid))
+            .isFullyPaid(isFullyPaid)
+            .transactionId(reference)
+            .provider(providerName)
+            .providerReference(chargeResult.providerReference())
+            .message(chargeResult.message())
             .build();
     }
     
@@ -192,6 +262,7 @@ public class PaymentService {
                 paymentRequest.setMethod(split.getMethod());
                 paymentRequest.setReference(split.getReference());
                 paymentRequest.setTip(split.getTip());
+                paymentRequest.setProvider(split.getProvider());
                 
                 PaymentResultDTO result = processPayment(businessId, orderId, paymentRequest);
                 results.add(result);
@@ -247,6 +318,16 @@ public class PaymentService {
         refund.setNotes(request.getNotes());
         refund.setApprovalCode(request.getApprovalCode() != null ? request.getApprovalCode() : generateApprovalCode());
         refund.setBusinessId(businessId);
+
+        // Provider-backed payments get reversed at the processor before we settle the refund.
+        if (originalPayment.getProvider() != null && !originalPayment.getProvider().isBlank()) {
+            com.jjenus.qliina_management.payment.provider.PaymentProvider.RefundResult providerResult =
+                    paymentProviderService.refundPayment(originalPayment);
+            if (!providerResult.approved()) {
+                throw new BusinessException("Provider refund failed: " + providerResult.message(), "REFUND_FAILED");
+            }
+            refund.setApprovalCode(providerResult.providerReference());
+        }
         
         refund = refundRepository.save(refund);
         
@@ -584,6 +665,8 @@ public class PaymentService {
             .tip(payment.getTip())
             .change(payment.getChangeAmount())
             .metadata(payment.getMetadata())
+            .provider(payment.getProvider())
+            .providerReference(payment.getProviderReference())
             .build();
     }
     
@@ -643,6 +726,8 @@ public class PaymentService {
             .tip(base.getTip())
             .change(base.getChange())
             .metadata(base.getMetadata())
+            .provider(base.getProvider())
+            .providerReference(base.getProviderReference())
             .orderDetails(orderDetails)
             .refunds(refunds)
             .build();

@@ -1,8 +1,11 @@
 package com.jjenus.qliina_management.order.repository;
 
+import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.order.dto.OrderFilter;
 import com.jjenus.qliina_management.order.model.Order;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -75,6 +78,31 @@ public class OrderSpecifications {
             
             if (filter.getHasIssue() != null && filter.getHasIssue()) {
                 predicates.add(cb.isNotEmpty(root.get("items").get("defects")));
+            }
+            
+            if (filter.getSearch() != null && !filter.getSearch().isBlank()) {
+                String term = "%" + filter.getSearch().trim().toLowerCase() + "%";
+                
+                Subquery<UUID> matchingCustomers = query.subquery(UUID.class);
+                Root<Customer> customer = matchingCustomers.from(Customer.class);
+                matchingCustomers.select(customer.get("id")).where(
+                    cb.and(
+                        cb.equal(customer.get("businessId"), businessId),
+                        cb.or(
+                            cb.like(cb.lower(customer.get("firstName")), term),
+                            cb.like(cb.lower(customer.get("lastName")), term),
+                            cb.like(cb.lower(
+                                cb.concat(customer.get("firstName"),
+                                    cb.concat(" ", customer.get("lastName")))), term),
+                            cb.like(cb.lower(customer.get("phone")), term)
+                        )
+                    ));
+                
+                predicates.add(cb.or(
+                    cb.like(cb.lower(root.get("trackingNumber")), term),
+                    cb.like(cb.lower(root.get("orderNumber")), term),
+                    root.get("customerId").in(matchingCustomers)
+                ));
             }
             
             return cb.and(predicates.toArray(new Predicate[0]));

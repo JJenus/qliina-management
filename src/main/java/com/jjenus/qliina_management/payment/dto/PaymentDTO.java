@@ -28,6 +28,8 @@ public class PaymentDTO {
     private BigDecimal tip;
     private BigDecimal change;
     private Map<String, Object> metadata;
+    private String provider;
+    private String providerReference;
     
     @Data
     @Builder

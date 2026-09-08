@@ -102,7 +102,7 @@ public class AdminPlatformUserController {
         }
 
         Role role = roleRepository.findByName(request.getRole())
-                .orElseThrow(() -> new BusinessException("Role '" + request.getRole() + "' not found. Ensure DataInitializer has run.", "ROLE_NOT_FOUND"));
+                .orElseThrow(() -> new BusinessException("Role '" + request.getRole() + "' not found. Ensure the platform has been bootstrapped.", "ROLE_NOT_FOUND"));
 
         // Create user — platform users have no businessId
         User user = new User();

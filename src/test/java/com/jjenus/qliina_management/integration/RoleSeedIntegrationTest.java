@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.integration;
 
-import com.jjenus.qliina_management.common.seed.DataInitializer;
+import com.jjenus.qliina_management.common.seed.PermissionSeeder;
+import com.jjenus.qliina_management.common.seed.RoleSeeder;
 import com.jjenus.qliina_management.identity.model.Permission;
 import com.jjenus.qliina_management.identity.model.Role;
 import com.jjenus.qliina_management.identity.repository.PermissionRepository;
@@ -44,7 +45,10 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
     private PermissionRepository permissionRepository;
 
     @Autowired
-    private DataInitializer dataInitializer;
+    private PermissionSeeder permissionSeeder;
+
+    @Autowired
+    private RoleSeeder roleSeeder;
 
     @Test
     void seed_createsEverySystemRole() {
@@ -155,7 +159,8 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
         // Baseline snapshot of every role's permission links.
         Map<String, Set<String>> before = snapshot();
 
-        dataInitializer.run();
+        permissionSeeder.run();
+        roleSeeder.run();
 
         Map<String, Set<String>> after = snapshot();
         for (String role : before.keySet()) {
@@ -175,7 +180,8 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
                 .collect(Collectors.toSet()));
         roleRepository.save(shopManager);
 
-        dataInitializer.run();
+        permissionSeeder.run();
+        roleSeeder.run();
 
         Set<String> names = permissionNames(
                 roleRepository.findByName("SHOP_MANAGER").orElseThrow().getPermissions());

@@ -31,7 +31,7 @@ import java.util.UUID;
  *   /topic/business.{businessId}.inventory  -- INVENTORY_LOW_STOCK
  *   /topic/business.{businessId}.dashboard  -- DASHBOARD_UPDATED
  *   /topic/business.{businessId}.quality    -- QUALITY_CHECK_UPDATED
- *   /queue/notifications                    -- IN_APP_NOTIFICATION (user-specific)
+ *   /user/queue/notifications               -- IN_APP_NOTIFICATION (user-specific)
  *
  * ---- Publish topics (client -> server via /app prefix) --------------
  *   /app/notifications.ack  body: {notificationId}  -- mark notification read
@@ -47,7 +47,7 @@ public class WebSocketController {
 
     /**
      * Client sends to /app/notifications.ack with body {"notificationId": "..."}
-     * to acknowledge a notification. Confirmation echoed to /queue/notifications.ack
+     * to acknowledge a notification. Confirmation echoed to /user/queue/notifications.ack
      *
      * Persistence (mark-read) should also be done via the REST endpoint
      * POST /notifications/mark-read for durability.
@@ -81,9 +81,9 @@ public class WebSocketController {
          + "/topic/business.{id}.inventory (INVENTORY_LOW_STOCK), "
          + "/topic/business.{id}.dashboard (DASHBOARD_UPDATED), "
          + "/topic/business.{id}.quality (QUALITY_CHECK_UPDATED), "
-         + "/queue/notifications (IN_APP_NOTIFICATION, user-specific). "
+         + "/user/queue/notifications (IN_APP_NOTIFICATION, user-specific). "
          + "Publish topics (client -> server via /app prefix): "
-         + "/app/notifications.ack body={notificationId} reply=/queue/notifications.ack")
+         + "/app/notifications.ack body={notificationId} reply=/user/queue/notifications.ack")
 @RestController
 @RequestMapping("/api/v1/ws-docs")
 class WebSocketDocsController {
@@ -139,7 +139,7 @@ class WebSocketDocsController {
 
     @Operation(
         summary = "WS: In-app notifications (user-specific)",
-        description = "Subscribe to /queue/notifications for the authenticated user's in-app notifications.",
+        description = "Subscribe to /user/queue/notifications for the authenticated user's in-app notifications.",
         responses = @ApiResponse(responseCode = "501",
             description = "Documentation-only endpoint.",
             content = @Content(schema = @Schema(implementation = WebSocketEvent.class))))

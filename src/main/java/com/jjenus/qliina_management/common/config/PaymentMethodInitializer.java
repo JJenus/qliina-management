@@ -22,7 +22,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@Order(2) // Run after DataInitializer
+@Order(5) // Run after the seeders (permissions/roles/plans/admin)
 public class PaymentMethodInitializer implements CommandLineRunner {
 
     private final PaymentMethodRepository paymentMethodRepository;

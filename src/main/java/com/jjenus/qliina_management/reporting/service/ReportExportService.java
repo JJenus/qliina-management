@@ -21,12 +21,13 @@ import com.jjenus.qliina_management.reporting.dto.TaxReportRequest;
 import com.jjenus.qliina_management.reporting.dto.SalesByServiceRequest;
 import com.jjenus.qliina_management.reporting.dto.EmployeePerfRequest;
 
-import com.itextpdf.kernel.pdf.PdfWriter;
-import com.itextpdf.kernel.pdf.PdfDocument;
-import com.itextpdf.layout.Document;
-import com.itextpdf.layout.element.Table;
-import com.itextpdf.layout.element.Paragraph;
-import com.itextpdf.layout.properties.UnitValue;
+import com.lowagie.text.Document;
+import com.lowagie.text.FontFactory;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -62,8 +63,10 @@ public class ReportExportService {
                 return exportTaxReport(businessId, request);
             case "SALES_BY_SERVICE":
                 return exportSalesByServiceReport(businessId, request);
-            case "EMPLOYEE_PERF":
             case "EMPLOYEE_PERFORMANCE":
+                log.warn("Report type 'EMPLOYEE_PERFORMANCE' is deprecated; use 'EMPLOYEE_PERF'");
+                // fall through — EMPLOYEE_PERFORMANCE is a legacy alias of EMPLOYEE_PERF
+            case "EMPLOYEE_PERF":
                 return exportEmployeePerformanceReport(businessId, request);
             default:
                 throw new IllegalArgumentException("Unsupported report type: " + request.getReportType());
@@ -102,19 +105,19 @@ public class ReportExportService {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
             
             // Summary section
-            csvPrinter.printRecord("REVENUE REPORT");
-            csvPrinter.printRecord("Period", 
+            printRecord(csvPrinter,"REVENUE REPORT");
+            printRecord(csvPrinter,"Period", 
                 report.getPeriod().getStart().format(formatter) + " to " + 
                 report.getPeriod().getEnd().format(formatter));
-            csvPrinter.printRecord("Total Revenue", report.getTotalRevenue());
-            csvPrinter.printRecord("Total Orders", report.getTotalOrders());
-            csvPrinter.printRecord("Average Order Value", report.getAverageOrderValue());
+            printRecord(csvPrinter,"Total Revenue", report.getTotalRevenue());
+            printRecord(csvPrinter,"Total Orders", report.getTotalOrders());
+            printRecord(csvPrinter,"Average Order Value", report.getAverageOrderValue());
             csvPrinter.println();
             
             // Period breakdown
-            csvPrinter.printRecord("PERIOD BREAKDOWN");
+            printRecord(csvPrinter,"PERIOD BREAKDOWN");
             for (RevenueReportDTO.PeriodSummaryDTO period : report.getByPeriod()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     period.getPeriod(),
                     period.getRevenue(),
                     period.getOrders(),
@@ -124,9 +127,9 @@ public class ReportExportService {
             csvPrinter.println();
             
             // Payment method breakdown
-            csvPrinter.printRecord("PAYMENT METHOD BREAKDOWN");
+            printRecord(csvPrinter,"PAYMENT METHOD BREAKDOWN");
             for (RevenueReportDTO.PaymentMethodSummaryDTO method : report.getByPaymentMethod()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     method.getMethod(),
                     method.getAmount(),
                     String.format("%.2f%%", method.getPercentage())
@@ -135,9 +138,9 @@ public class ReportExportService {
             csvPrinter.println();
             
             // Service type breakdown
-            csvPrinter.printRecord("SERVICE TYPE BREAKDOWN");
+            printRecord(csvPrinter,"SERVICE TYPE BREAKDOWN");
             for (RevenueReportDTO.ServiceSummaryDTO service : report.getByServiceType()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     service.getService(),
                     service.getAmount(),
                     service.getOrders()
@@ -243,27 +246,27 @@ public class ReportExportService {
              OutputStreamWriter writer = new OutputStreamWriter(out);
              CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT)) {
             
-            csvPrinter.printRecord("PROFIT & LOSS STATEMENT");
-            csvPrinter.printRecord("Period", 
+            printRecord(csvPrinter,"PROFIT & LOSS STATEMENT");
+            printRecord(csvPrinter,"Period", 
                 report.getPeriod().getStart() + " to " + report.getPeriod().getEnd());
             csvPrinter.println();
             
-            csvPrinter.printRecord("REVENUE");
-            csvPrinter.printRecord("Total Revenue", report.getRevenue().getTotal());
+            printRecord(csvPrinter,"REVENUE");
+            printRecord(csvPrinter,"Total Revenue", report.getRevenue().getTotal());
             csvPrinter.println();
             
-            csvPrinter.printRecord("EXPENSES");
+            printRecord(csvPrinter,"EXPENSES");
             for (ProfitLossDTO.ExpenseCategoryDTO exp : report.getExpenses().getCategories()) {
-                csvPrinter.printRecord(exp.getCategory(), exp.getAmount(), exp.getPercentage() + "%");
+                printRecord(csvPrinter,exp.getCategory(), exp.getAmount(), exp.getPercentage() + "%");
             }
-            csvPrinter.printRecord("Total Expenses", report.getExpenses().getTotal());
+            printRecord(csvPrinter,"Total Expenses", report.getExpenses().getTotal());
             csvPrinter.println();
             
-            csvPrinter.printRecord("PROFIT");
-            csvPrinter.printRecord("Gross Profit", report.getGrossProfit());
-            csvPrinter.printRecord("Gross Margin", report.getGrossMargin() + "%");
-            csvPrinter.printRecord("Net Profit", report.getNetProfit());
-            csvPrinter.printRecord("Net Margin", report.getNetMargin() + "%");
+            printRecord(csvPrinter,"PROFIT");
+            printRecord(csvPrinter,"Gross Profit", report.getGrossProfit());
+            printRecord(csvPrinter,"Gross Margin", report.getGrossMargin() + "%");
+            printRecord(csvPrinter,"Net Profit", report.getNetProfit());
+            printRecord(csvPrinter,"Net Margin", report.getNetMargin() + "%");
             
             csvPrinter.flush();
             return out.toByteArray();
@@ -366,7 +369,7 @@ public class ReportExportService {
                  .withHeader("Customer", "Total Due", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days"))) {
             
             for (AgingReportDTO.CustomerAgingDTO customer : report.getByCustomer()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     customer.getCustomerName(),
                     customer.getTotalDue(),
                     customer.getCurrent(),
@@ -480,7 +483,7 @@ public class ReportExportService {
                  .withHeader("Date", "Invoice", "Customer", "Amount", "Tax"))) {
             
             for (TaxReportDTO.TaxDetailDTO detail : report.getDetails()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     detail.getDate(),
                     detail.getInvoiceNumber(),
                     detail.getCustomerName(),
@@ -490,11 +493,11 @@ public class ReportExportService {
             }
             
             csvPrinter.println();
-            csvPrinter.printRecord("SUMMARY");
-            csvPrinter.printRecord("Total Sales", report.getTotalSales());
-            csvPrinter.printRecord("Taxable Sales", report.getTaxableSales());
-            csvPrinter.printRecord("Tax Rate", report.getTaxRate() + "%");
-            csvPrinter.printRecord("Tax Collected", report.getTaxCollected());
+            printRecord(csvPrinter,"SUMMARY");
+            printRecord(csvPrinter,"Total Sales", report.getTotalSales());
+            printRecord(csvPrinter,"Taxable Sales", report.getTaxableSales());
+            printRecord(csvPrinter,"Tax Rate", report.getTaxRate() + "%");
+            printRecord(csvPrinter,"Tax Collected", report.getTaxCollected());
             
             csvPrinter.flush();
             return out.toByteArray();
@@ -601,7 +604,7 @@ public class ReportExportService {
                  .withHeader("Service", "Orders", "Items", "Revenue", "Percentage", "AOV"))) {
             
             for (SalesByServiceDTO.ServiceSalesDTO service : report.getServices()) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     service.getServiceName(),
                     service.getOrderCount(),
                     service.getItemCount(),
@@ -711,7 +714,7 @@ public class ReportExportService {
                  .withHeader("Employee", "Role", "Rank", "Orders", "Items", "Revenue", "Quality", "Attendance", "Productivity"))) {
             
             for (EmployeePerfDTO perf : reports) {
-                csvPrinter.printRecord(
+                printRecord(csvPrinter,
                     perf.getEmployeeName(),
                     perf.getRole(),
                     perf.getRank(),
@@ -792,41 +795,46 @@ public class ReportExportService {
     // ======================== PDF HELPER ========================
     
     private void buildPdf(ByteArrayOutputStream out, String title, List<String> headers, List<List<String>> rows, List<String[]> summary) throws Exception {
-        PdfWriter writer = new PdfWriter(out);
-        PdfDocument pdfDoc = new PdfDocument(writer);
-        Document doc = new Document(pdfDoc);
-        
-        doc.add(new Paragraph(title).setBold().setFontSize(16));
-        
-        if (summary != null && !summary.isEmpty()) {
-            addSummarySection(doc, summary);
-            doc.add(new Paragraph("\n"));
-        }
-        
-        float[] columnWidths = new float[headers.size()];
-        for (int i = 0; i < headers.size(); i++) {
-            columnWidths[i] = 100f / headers.size();
-        }
-        Table table = new Table(UnitValue.createPercentArray(columnWidths)).useAllAvailableWidth();
-        
-        for (String header : headers) {
-            com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell().add(new Paragraph(header).setBold());
-            table.addHeaderCell(cell);
-        }
-        
-        for (List<String> row : rows) {
-            for (String value : row) {
-                table.addCell(new com.itextpdf.layout.element.Cell().add(new Paragraph(value != null ? value : "")));
+        Document doc = new Document();
+        PdfWriter.getInstance(doc, out);
+        com.lowagie.text.Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
+        com.lowagie.text.Font boldFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+        com.lowagie.text.Font normalFont = FontFactory.getFont(FontFactory.HELVETICA, 12);
+
+        try {
+            doc.open();
+            doc.add(new Paragraph(title, titleFont));
+
+            if (summary != null && !summary.isEmpty()) {
+                addSummarySection(doc, summary, boldFont);
+                doc.add(new Paragraph("\n"));
+            }
+
+            PdfPTable table = new PdfPTable(Math.max(headers.size(), 1));
+            table.setWidthPercentage(100f);
+
+            for (String header : headers) {
+                table.addCell(new PdfPCell(new Phrase(header, boldFont)));
+            }
+            table.setHeaderRows(1);
+
+            for (List<String> row : rows) {
+                for (String value : row) {
+                    table.addCell(new PdfPCell(new Phrase(value != null ? value : "", normalFont)));
+                }
+            }
+
+            doc.add(table);
+        } finally {
+            if (doc.isOpen()) {
+                doc.close();
             }
         }
-        
-        doc.add(table);
-        doc.close();
     }
-    
-    private void addSummarySection(Document doc, List<String[]> keyValues) {
+
+    private void addSummarySection(Document doc, List<String[]> keyValues, com.lowagie.text.Font font) throws Exception {
         for (String[] kv : keyValues) {
-            doc.add(new Paragraph(kv[0] + ": " + (kv.length > 1 ? kv[1] : "")).setBold());
+            doc.add(new Paragraph(kv[0] + ": " + (kv.length > 1 ? kv[1] : ""), font));
         }
     }
     
@@ -877,7 +885,11 @@ public class ReportExportService {
                 for (int i = 0; i < row.size(); i++) {
                     Cell cell = dataRow.createCell(i);
                     Object val = row.get(i);
-                    if (val instanceof Number num) {
+                    if (val instanceof BigDecimal bd) {
+                        // Write decimals as exact strings — coercion through double can
+                        // introduce IEEE-754 artifacts (e.g. 35235.700000000001).
+                        cell.setCellValue(bd.toPlainString());
+                    } else if (val instanceof Number num) {
                         cell.setCellValue(num.doubleValue());
                     } else {
                         cell.setCellValue(val != null ? val.toString() : "");
@@ -928,5 +940,31 @@ public class ReportExportService {
 
     private String asString(Object raw) {
         return raw instanceof String s ? s : null;
+    }
+
+    /**
+     * Emits a CSV record through {@link CSVPrinter#printRecord(Object...)} after
+     * neutralizing formula-injection characters in every cell.
+     *
+     * <p>Cells beginning with {@code = + - @ tab} or a carriage return are
+     * spreadsheet-formula payloads when opened in Excel/Sheets; prefixing them with
+     * {@code '} renders them as inert text.
+     */
+    private static void printRecord(CSVPrinter printer, Object... values) throws IOException {
+        for (int i = 0; i < values.length; i++) {
+            values[i] = sanitizeCsvCell(values[i]);
+        }
+        printer.printRecord(values);
+    }
+
+    private static Object sanitizeCsvCell(Object value) {
+        if (!(value instanceof String s) || s.isEmpty()) {
+            return value;
+        }
+        char first = s.charAt(0);
+        if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') {
+            return "'" + s;
+        }
+        return s;
     }
 }

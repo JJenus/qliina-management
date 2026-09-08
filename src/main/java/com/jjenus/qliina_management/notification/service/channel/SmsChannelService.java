@@ -10,6 +10,7 @@ import com.jjenus.qliina_management.notification.repository.SMSConfigurationRepo
 import com.jjenus.qliina_management.common.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,8 +24,21 @@ public class SmsChannelService {
     private final SMSConfigurationRepository smsConfigRepository;
     private final NotificationLogRepository logRepository;
     private final EncryptionService encryptionService;
+
+    /**
+     * Sandbox gate: when true the channel decrypts the stored provider config
+     * and then simulates a successful send PROFILE-ONLY (dev/test default). Prod
+     * sets {@code false} and every send fails closed until a real provider is
+     * wired — it must never silently pretend a message was delivered.
+     */
+    @Value("${app.notification.channels.mock-external:true}")
+    private boolean mockExternal;
     
     public void send(Notification notification, User user) {
+        if (!mockExternal) {
+            throw new BusinessException("SMS delivery is not wired to a real provider yet; keep app.notification.channels.mock-external=true until one is configured",
+                    "SMS_SEND_UNIMPLEMENTED");
+        }
         SMSConfiguration config = getConfig(notification.getBusinessId());
         
         try {
@@ -52,6 +66,10 @@ public class SmsChannelService {
     }
     
     public void sendTest(UUID businessId, String recipient, String message) {
+        if (!mockExternal) {
+            throw new BusinessException("SMS delivery is not wired to a real provider yet; keep app.notification.channels.mock-external=true until one is configured",
+                    "SMS_SEND_UNIMPLEMENTED");
+        }
         SMSConfiguration config = getConfig(businessId);
         
         try {

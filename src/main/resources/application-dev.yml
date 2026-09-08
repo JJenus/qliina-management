@@ -8,12 +8,6 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: update
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    validate-on-migrate: true
-    baseline-on-migrate: true
-    baseline-version: 0
 
 # Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
 app:

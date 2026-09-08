@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -39,6 +40,11 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
             @Param("endDate") LocalDateTime endDate);
     
     Page<OrderPayment> findByBusinessId(UUID businessId, Pageable pageable);
+
+    @Query("SELECT COALESCE(SUM(op.amount), 0) FROM OrderPayment op WHERE op.orderId = :orderId AND op.status = 'COMPLETED'")
+    BigDecimal sumCompletedPaymentsByOrderId(@Param("orderId") UUID orderId);
+
+    Optional<OrderPayment> findByProviderAndProviderReference(String provider, String providerReference);
     
     @Query("SELECT op FROM OrderPayment op WHERE op.businessId = :businessId AND op.shopId = :shopId")
     Page<OrderPayment> findByBusinessIdAndShopId(

@@ -474,7 +474,7 @@ class OrderIntegrationTest extends BaseIntegrationTest {
     // ---------------------------------------------------------------------
 
     @Test
-    void uploadAttachment_stub() throws Exception {
+    void uploadAttachment_failsClosedWhenStorageNotConfigured() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
         UUID orderId = createOrder(ctx);
         MockMultipartFile file = new MockMultipartFile(
@@ -483,15 +483,16 @@ class OrderIntegrationTest extends BaseIntegrationTest {
                         .file(file)
                         .param("type", "RECEIPT")
                         .header("Authorization", "Bearer " + ctx.accessToken()))
-                .andExpect(status().isOk());
+                .andExpect(status().is4xxClientError())
+                .andExpect(jsonPath("$.errorCode").value("ATTACHMENTS_UNSUPPORTED"));
     }
 
     @Test
-    void deleteAttachment_stub() throws Exception {
+    void deleteAttachment_failsClosedWhenStorageNotConfigured() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
         UUID orderId = createOrder(ctx);
-        assertSuccess(delete(orderBase(ctx.businessId()) + "/" + orderId + "/attachments/" + UUID.randomUUID(),
-                ctx.accessToken()), "Attachment deleted successfully");
+        assertProblemDetail(delete(orderBase(ctx.businessId()) + "/" + orderId + "/attachments/" + UUID.randomUUID(),
+                ctx.accessToken()), 400, "ATTACHMENTS_UNSUPPORTED");
     }
 
     @Test
@@ -523,5 +524,99 @@ class OrderIntegrationTest extends BaseIntegrationTest {
         assertSuccess(post(orderBase(ctx.businessId()) + "/bulk/status", ctx.accessToken(),
                 Map.of("orderIds", new ArrayList<>(List.of(orderId.toString())), "status", "WASHING")),
                 "Bulk status update completed");
+    }
+
+    // ---------------------------------------------------------------------
+    // Cross-tenant isolation (IDOR)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void crossTenantCannotAccessOrderByOtherBusiness() throws Exception {
+        AuthContext a = registerBusinessAndOwner();
+        AuthContext b = registerBusinessAndOwner();
+        UUID orderInA = createOrder(a);
+
+        // Business B must not resolve A's order through any by-id endpoint
+        // using B's business path. A 404-equivalent (ORDER_NOT_FOUND) leaks
+        // nothing about the target's existence.
+        assertProblemDetail(get(orderBase(b.businessId()) + "/" + orderInA, b.accessToken()),
+                400, "ORDER_NOT_FOUND");
+        assertProblemDetail(get(orderBase(b.businessId()) + "/" + orderInA + "/timeline", b.accessToken()),
+                400, "ORDER_NOT_FOUND");
+        assertProblemDetail(put(orderBase(b.businessId()) + "/" + orderInA, b.accessToken(),
+                Map.of("priority", "URGENT")), 400, "ORDER_NOT_FOUND");
+        assertProblemDetail(delete(orderBase(b.businessId()) + "/" + orderInA, b.accessToken(),
+                Map.of("reason", "tamper")), 400, "ORDER_NOT_FOUND");
+        assertProblemDetail(post(orderBase(b.businessId()) + "/" + orderInA + "/transfer", b.accessToken(),
+                Map.of("targetShopId", b.shopId().toString(), "reason", "tamper")), 400, "ORDER_NOT_FOUND");
+        assertProblemDetail(post(orderBase(b.businessId()) + "/" + orderInA + "/return", b.accessToken(),
+                Map.of("reason", "tamper")), 400, "ORDER_NOT_FOUND");
+
+        // The order is untouched.
+        get(orderBase(a.businessId()) + "/" + orderInA, a.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RECEIVED"));
+    }
+
+    @Test
+    void crossTenantCannotResolveTrackingNumber() throws Exception {
+        AuthContext a = registerBusinessAndOwner();
+        AuthContext b = registerBusinessAndOwner();
+
+        String json = post(orderBase(a.businessId()), a.accessToken(),
+                orderBody(createCustomer(a), a.shopId(), serviceTypeId(a), garmentTypeId(a)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String tracking = readString(json, "$.trackingNumber");
+
+        get(orderBase(b.businessId()) + "/tracking/" + tracking, b.accessToken())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("ORDER_NOT_FOUND"));
+    }
+
+    @Test
+    void crossTenantCannotUpdateItemStatus() throws Exception {
+        AuthContext a = registerBusinessAndOwner();
+        AuthContext b = registerBusinessAndOwner();
+        UUID orderInA = createOrder(a);
+        String detail = get(orderBase(a.businessId()) + "/" + orderInA, a.accessToken())
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String itemId = readString(detail, "$.items[0].id");
+
+        assertProblemDetail(post(orderBase(b.businessId()) + "/" + orderInA + "/items/" + itemId + "/status",
+                b.accessToken(), Map.of("itemId", itemId, "status", "WASHING", "notes", "x")), 400, "ORDER_NOT_FOUND");
+        assertProblemDetail(post(orderBase(b.businessId()) + "/" + orderInA + "/notes", b.accessToken(),
+                Map.of("content", "snooping", "type", "GENERAL")), 400, "ORDER_NOT_FOUND");
+    }
+
+    // ---------------------------------------------------------------------
+    // Search filter
+    // ---------------------------------------------------------------------
+
+    @Test
+    void listOrders_searchMatchesTrackingOrderNumberAndCustomer() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = createOrder(ctx);
+        String detail = get(orderBase(ctx.businessId()) + "/" + orderId, ctx.accessToken())
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String tracking = readString(detail, "$.trackingNumber");
+        String orderNumber = readString(detail, "$.orderNumber");
+        String customerPhone = readString(detail, "$.customer.phone");
+
+        get(orderBase(ctx.businessId()) + "?search=" + tracking, ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(orderId.toString()));
+        get(orderBase(ctx.businessId()) + "?search=" + orderNumber, ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        get(orderBase(ctx.businessId()) + "?search=oba", ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        get(orderBase(ctx.businessId()) + "?search=" + customerPhone, ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        get(orderBase(ctx.businessId()) + "?search=no-such-thing", ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
     }
 }

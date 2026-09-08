@@ -7,6 +7,7 @@ import com.jjenus.qliina_management.notification.model.NotificationLog;
 import com.jjenus.qliina_management.notification.repository.NotificationLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -18,8 +19,18 @@ import java.util.UUID;
 public class WhatsAppChannelService {
     
     private final NotificationLogRepository logRepository;
+
+    /**
+     * Sandbox gate — see {@code SmsChannelService.mockExternal}.
+     */
+    @Value("${app.notification.channels.mock-external:true}")
+    private boolean mockExternal;
     
     public void send(Notification notification, User user) {
+        if (!mockExternal) {
+            throw new BusinessException("WhatsApp delivery is not wired to a real provider yet; keep app.notification.channels.mock-external=true until one is configured",
+                    "WHATSAPP_SEND_UNIMPLEMENTED");
+        }
         try {
             // WhatsApp Business API implementation would go here
             log.info("Sending WhatsApp message to: {}", user.getPhone());
@@ -33,6 +44,10 @@ public class WhatsAppChannelService {
     }
     
     public void sendTest(UUID businessId, String recipient, String message) {
+        if (!mockExternal) {
+            throw new BusinessException("WhatsApp delivery is not wired to a real provider yet; keep app.notification.channels.mock-external=true until one is configured",
+                    "WHATSAPP_SEND_UNIMPLEMENTED");
+        }
         try {
             log.info("Sending test WhatsApp message to: {}", recipient);
             // WhatsApp test implementation

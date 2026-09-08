@@ -8,12 +8,22 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -719,6 +729,62 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition",
                         org.hamcrest.Matchers.containsString("aging_" + date + ".csv")));
+    }
+
+    @Test
+    void export_aging_csv_neutralizesFormulaInjection() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName", "=1+1");
+        body.put("lastName", "Mal");
+        body.put("phone", newPhone());
+        UUID custId = readUuid(post("/api/v1/" + ctx.businessId() + "/customers", ctx.accessToken(), body)
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.id");
+        post("/api/v1/" + ctx.businessId() + "/orders", ctx.accessToken(), orderBody(custId, ctx))
+                .andExpect(status().isOk());
+
+        post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "AGING", "format", "CSV"))
+                .andExpect(status().isOk())
+                // Formula-significant cells are neutralized with an apostrophe prefix…
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("'=1+1 Mal")))
+                // …and never emitted as a live formula cell (no line starting with raw '=').
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("\r\n=1+1 Mal"))));
+    }
+
+    @Test
+    void export_profitLoss_excel_writesDecimalEntriesExactly() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        post("/api/v1/" + ctx.businessId() + "/expenses", ctx.accessToken(), Map.of(
+                "category", "SUPPLIES",
+                "description", "Detergent refill",
+                "amount", 45.75,
+                "expenseDate", today()))
+                .andExpect(status().isCreated());
+
+        MvcResult res = post(base(ctx.businessId()) + "/export", ctx.accessToken(),
+                Map.of("reportType", "PROFIT_LOSS", "format", "EXCEL",
+                        "parameters", Map.of("startDate", today(), "endDate", today())))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] xlsx = res.getResponse().getContentAsByteArray();
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            boolean found = false;
+            for (Row row : sheet) {
+                Cell category = row.getCell(0);
+                if (category != null && "SUPPLIES".equals(category.getStringCellValue())) {
+                    Cell amount = row.getCell(1);
+                    // BigDecimal amounts are written as exact strings, never IEEE-754 doubles.
+                    assertThat(amount.getCellType()).isEqualTo(CellType.STRING);
+                    assertThat(amount.getStringCellValue()).isEqualTo("45.75");
+                    found = true;
+                }
+            }
+            assertThat(found).as("expense row present in workbook").isTrue();
+        }
     }
 
     // ---------------------------------------------------------------------
