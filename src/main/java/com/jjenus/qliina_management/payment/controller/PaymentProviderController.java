@@ -1,6 +1,5 @@
 package com.jjenus.qliina_management.payment.controller;
 
-import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.payment.dto.PaymentProviderDTO;
 import com.jjenus.qliina_management.payment.dto.PaymentVerifyDTO;
 import com.jjenus.qliina_management.payment.service.PaymentProviderService;
@@ -19,7 +18,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/{businessId}/payment-providers")
 @RequiredArgsConstructor
-@RequireClockIn
 public class PaymentProviderController {
 
     private final PaymentProviderService paymentProviderService;
