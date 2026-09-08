@@ -349,6 +349,7 @@ public class AdminBusinessController {
                 .trialEndsAt(b.getTrialEndsAt())
                 .createdAt(b.getCreatedAt())
                 .updatedAt(b.getUpdatedAt())
+                .setupRequired(b.getOnboardingCompletedAt() == null)
                 .build();
     }
 

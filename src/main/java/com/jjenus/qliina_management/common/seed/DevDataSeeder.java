@@ -190,6 +190,8 @@ public class DevDataSeeder implements CommandLineRunner {
         business.setPlan(Business.Plan.PRO);
         business.setStatus(Business.Status.ACTIVE);
         business.setTrialEndsAt(null);
+        // Demo tenant is fully set up — don't nag its owner with the onboarding path
+        business.setOnboardingCompletedAt(LocalDateTime.now());
         businessRepository.save(business);
 
         shops.add(shopRepository.findById(reg.getShopId()).orElseThrow());

@@ -23,4 +23,6 @@ public class BusinessDTO {
     private LocalDateTime   updatedAt;
     /** Number of active shops — populated by BusinessService.toDTO(). */
     private long            activeShopCount;
+    /** True until the business owner completes the first-run setup wizard. */
+    private boolean         setupRequired;
 }

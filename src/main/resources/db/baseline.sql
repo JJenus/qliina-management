@@ -474,6 +474,7 @@ CREATE TABLE public.businesses (
     logo_url character varying(500),
     name character varying(120) NOT NULL,
     phone character varying(20),
+    onboarding_completed_at timestamp(6) without time zone,
     plan character varying(20) NOT NULL,
     slug character varying(80) NOT NULL,
     status character varying(20) NOT NULL,

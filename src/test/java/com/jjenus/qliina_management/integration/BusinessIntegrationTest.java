@@ -36,7 +36,29 @@ class BusinessIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.id").value(ctx.businessId().toString()))
                 .andExpect(jsonPath("$.status").value("TRIAL"))
                 .andExpect(jsonPath("$.plan").value("FREE"))
-                .andExpect(jsonPath("$.activeShopCount").value(1));
+                .andExpect(jsonPath("$.activeShopCount").value(1))
+                .andExpect(jsonPath("$.setupRequired").value(true));
+    }
+
+    @Test
+    void onboarding_freshRegistrationRequiresSetup_thenCompleteFlipsIt() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+
+        // Fresh registration → setup required
+        get("/api/v1/businesses/" + ctx.businessId(), ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.setupRequired").value(true));
+
+        // Completing the wizard marks it done
+        post("/api/v1/businesses/" + ctx.businessId() + "/onboarding", ctx.accessToken(), Map.of())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ctx.businessId().toString()))
+                .andExpect(jsonPath("$.setupRequired").value(false));
+
+        // Idempotent — a second call stays complete
+        post("/api/v1/businesses/" + ctx.businessId() + "/onboarding", ctx.accessToken(), Map.of())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.setupRequired").value(false));
     }
 
     @Test

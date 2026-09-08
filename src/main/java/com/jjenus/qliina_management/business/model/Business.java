@@ -63,6 +63,14 @@ public class Business extends BaseEntity {
     @Column(name = "trial_ends_at")
     private LocalDateTime trialEndsAt;
 
+    /**
+     * When the owner finished the guided first-run setup (services, garments,
+     * pricing). Null on freshly registered businesses → {@code setupRequired};
+     * legacy/seeded tenants that predate onboarding are treated as complete.
+     */
+    @Column(name = "onboarding_completed_at")
+    private LocalDateTime onboardingCompletedAt;
+
     /** Physical address of the business headquarters. */
     @Embedded
     @AttributeOverrides({

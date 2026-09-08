@@ -239,6 +239,22 @@ public class BusinessService {
         return toDTO(businessRepository.save(b));
     }
 
+    /**
+     * Marks the business first-run setup as complete (idempotent). Called by
+     * the owner when they finish the guided setup wizard (services, garments,
+     * pricing). Until then {@link BusinessDTO#isSetupRequired()} is true.
+     */
+    @Transactional
+    public BusinessDTO completeOnboarding(UUID id) {
+        Business b = findOrThrow(id);
+        if (b.getOnboardingCompletedAt() == null) {
+            b.setOnboardingCompletedAt(LocalDateTime.now());
+            b = businessRepository.save(b);
+            log.info("Business {} onboarding marked complete", id);
+        }
+        return toDTO(b);
+    }
+
     // -------------------------------------------------------------------------
     // Login status check (called by AuthService)
     // -------------------------------------------------------------------------
@@ -296,6 +312,7 @@ public class BusinessService {
                 .trialEndsAt(b.getTrialEndsAt())
                 .createdAt(b.getCreatedAt()).updatedAt(b.getUpdatedAt())
                 .activeShopCount(shopRepository.countActiveByBusinessId(b.getId()))
+                .setupRequired(b.getOnboardingCompletedAt() == null)
                 .build();
     }
 

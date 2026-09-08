@@ -105,4 +105,20 @@ public class BusinessController {
             @Parameter(description = "New status", required = true) @RequestParam Business.Status status) {
         return ResponseEntity.ok(businessService.updateStatus(businessId, status));
     }
+
+    @Operation(summary = "Complete first-run setup",
+               description = "Marks the business onboarding as complete after the owner finishes the guided setup wizard. Business owner only.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "OK"),
+        @ApiResponse(responseCode = "404", description = "Not found",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Access denied",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{businessId}/onboarding")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
+    public ResponseEntity<BusinessDTO> completeOnboarding(
+            @Parameter(description = "Business ID", required = true) @PathVariable UUID businessId) {
+        return ResponseEntity.ok(businessService.completeOnboarding(businessId));
+    }
 }
