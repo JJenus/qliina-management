@@ -109,8 +109,13 @@ interruptions. Re-verify with the commands at the bottom.
       `qliina-pwa/PRODUCTION_READINESS.md` "Payments UI".
 
 ## ⬜ Remaining (lightest first)
-- [ ] **Onboarding** — no onboarding/reset flow exists yet (feature gap flagged
-      in the readiness review). Back out into its own epic after the above.
+- [x] **Onboarding (first-run setup)** — `Business.setupRequired` (null
+      `onboarding_completed_at`) surfaced on `BusinessDTO`/admin DTOs;
+      idempotent `POST /api/v1/businesses/{businessId}/onboarding`
+      (`admin.settings`) flips it; demo seed marks complete, legacy tenants stay
+      clear. Frontend `/setup` wizard (services→garments→pricing→done), owner
+      "Continue setup" banner, E2E walks the whole flow. `baseline.sql` column +
+      `BusinessIntegrationTest` (29 tests).
 
 ## Verify
 
