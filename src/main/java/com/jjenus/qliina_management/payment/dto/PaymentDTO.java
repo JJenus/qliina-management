@@ -30,6 +30,7 @@ public class PaymentDTO {
     private Map<String, Object> metadata;
     private String provider;
     private String providerReference;
+    private String providerStatus;
     
     @Data
     @Builder

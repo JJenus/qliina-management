@@ -66,6 +66,16 @@ public class WebSocketPublisher {
     }
 
     // ----------------------------------------------------------------
+    // Payment module - broadcast to all sessions in a business
+    // ----------------------------------------------------------------
+
+    @Async
+    public void publishPaymentUpdate(UUID businessId, UUID orderId, Object payload) {
+        send(WebSocketTopics.paymentUpdates(businessId),
+             buildEvent("PAYMENT_UPDATED", businessId, orderId, payload));
+    }
+
+    // ----------------------------------------------------------------
     // IN_APP notification -- per-user private queue
     // ----------------------------------------------------------------
 

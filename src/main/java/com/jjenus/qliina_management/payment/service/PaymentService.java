@@ -688,6 +688,7 @@ public class PaymentService {
             .metadata(payment.getMetadata())
             .provider(payment.getProvider())
             .providerReference(payment.getProviderReference())
+            .providerStatus(payment.getProviderStatus())
             .build();
     }
     

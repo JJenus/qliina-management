@@ -34,6 +34,10 @@ public final class WebSocketTopics {
         return "/topic/business." + businessId + ".quality";
     }
 
+    public static String paymentUpdates(UUID businessId) {
+        return "/topic/business." + businessId + ".payments";
+    }
+
     /**
      * User destination constant for convertAndSendToUser(user, USER_NOTIFICATIONS_SUFFIX, payload).
      * The client subscribes to /user/queue/notifications.

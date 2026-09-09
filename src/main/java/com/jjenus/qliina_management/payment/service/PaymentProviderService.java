@@ -1,6 +1,7 @@
 package com.jjenus.qliina_management.payment.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.common.websocket.WebSocketPublisher;
 import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.customer.repository.CustomerRepository;
 import com.jjenus.qliina_management.identity.model.User;
@@ -49,6 +50,7 @@ public class PaymentProviderService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final PaymentReconciliationService reconciliationService;
+    private final WebSocketPublisher webSocketPublisher;
 
     @Value("${app.payments.currency:NGN}")
     private String currency;
@@ -203,6 +205,10 @@ public class PaymentProviderService {
         order.getTimeline().add(timeline);
         orderRepository.save(order);
 
+        publishPaymentEvent(
+                businessId, payment.getId(), payment.getOrderId(), "PENDING", payment.getProvider(),
+                payment.getProviderReference(), payment.getAmount(), "Payment request initiated for authorization");
+
         String checkoutUrl = result.checkoutUrl();
         return GeneratePaymentResultDTO.builder()
                 .paymentId(payment.getId())
@@ -297,6 +303,9 @@ public class PaymentProviderService {
                 payment.setProviderStatus("FAILED");
                 paymentRepository.save(payment);
                 log.warn("Provider charge failed payment={} order={}", payment.getId(), payment.getOrderId());
+                publishPaymentEvent(
+                        payment.getBusinessId(), payment.getId(), payment.getOrderId(), "FAILED", payment.getProvider(),
+                        payment.getProviderReference(), payment.getAmount(), "Provider charge failed");
             }
             return;
         }
@@ -343,6 +352,23 @@ public class PaymentProviderService {
         order.setBalanceDue(totalPaid.compareTo(orderTotal) >= 0 ? BigDecimal.ZERO : orderTotal.subtract(totalPaid));
         orderRepository.save(order);
         log.info("Provider charge settled payment={} order={}", payment.getId(), order.getId());
+
+        publishPaymentEvent(
+                payment.getBusinessId(), payment.getId(), payment.getOrderId(), "COMPLETED", payment.getProvider(),
+                payment.getProviderReference(), payment.getAmount(), "Provider charge settled");
+    }
+
+    private void publishPaymentEvent(UUID businessId, UUID paymentId, UUID orderId, String status, String provider,
+            String providerReference, BigDecimal amount, String message) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("paymentId", paymentId);
+        payload.put("orderId", orderId);
+        payload.put("status", status);
+        payload.put("provider", provider);
+        payload.put("providerReference", providerReference);
+        payload.put("amount", amount);
+        payload.put("message", message);
+        webSocketPublisher.publishPaymentUpdate(businessId, orderId, payload);
     }
 
     private UUID getCurrentUserId() {
