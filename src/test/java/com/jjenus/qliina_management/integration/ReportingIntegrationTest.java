@@ -1,6 +1,8 @@
 package com.jjenus.qliina_management.integration;
 
 import com.jjenus.qliina_management.business.service.ServiceCatalogService;
+import com.jjenus.qliina_management.employee.model.EmployeeShift;
+import com.jjenus.qliina_management.employee.repository.EmployeeShiftRepository;
 import com.jjenus.qliina_management.employee.repository.EmployeeTargetRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,9 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private EmployeeTargetRepository targetRepository;
+
+    @Autowired
+    private EmployeeShiftRepository shiftRepository;
 
     private String base(UUID businessId) {
         return "/api/v1/" + businessId + "/reports";
@@ -99,6 +104,13 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
 
     /** Creates a user with the given role name; returns their login token. */
     private String createEmployee(AuthContext ctx, String roleName) throws Exception {
+        return createEmployeeWithId(ctx, roleName).token();
+    }
+
+    private record CreatedEmployee(UUID id, String token) {}
+
+    /** Creates a user with the given role name; returns both the id and their login token. */
+    private CreatedEmployee createEmployeeWithId(AuthContext ctx, String roleName) throws Exception {
         MvcResult rolesRes = get("/api/v1/" + ctx.businessId() + "/users/available-roles", ctx.accessToken())
                 .andExpect(status().isOk()).andReturn();
         String rolesJson = rolesRes.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -119,10 +131,10 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
         body.put("confirmPassword", DEFAULT_PASSWORD);
         body.put("roles", List.of(Map.of("roleId", ids.get(idx), "shopId", ctx.shopId().toString())));
 
-        post("/api/v1/" + ctx.businessId() + "/users", ctx.accessToken(), body)
-                .andExpect(status().isOk());
-
-        return loginToken(username, DEFAULT_PASSWORD);
+        MvcResult res = post("/api/v1/" + ctx.businessId() + "/users", ctx.accessToken(), body)
+                .andExpect(status().isOk()).andReturn();
+        UUID userId = readUuid(res.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.id");
+        return new CreatedEmployee(userId, loginToken(username, DEFAULT_PASSWORD));
     }
 
     private void clockIn(AuthContext ctx, String token) throws Exception {
@@ -450,6 +462,54 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
                 Map.of(
                         "startDate", "startDate is required",
                         "endDate", "endDate is required"));
+    }
+
+    @Test
+    void employeePerformance_shiftDayWithoutOrderItems_no500() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        CreatedEmployee washer = createEmployeeWithId(ctx, "WASHER");
+        LocalDate day = LocalDate.now();
+
+        // Deterministic clocked-out shift: worked a full day, no order items in range.
+        EmployeeShift shift = new EmployeeShift();
+        shift.setBusinessId(ctx.businessId());
+        shift.setShopId(ctx.shopId());
+        shift.setEmployeeId(washer.id());
+        shift.setDate(day);
+        shift.setScheduledStart(day.atTime(8, 0));
+        shift.setScheduledEnd(day.atTime(17, 0));
+        shift.setActualStart(day.atTime(8, 5));
+        shift.setActualEnd(day.atTime(17, 0));
+        shift.setTotalWorkMinutes(480);
+        shift.setStatus(EmployeeShift.ShiftStatus.CHECKED_OUT);
+        shiftRepository.save(shift);
+
+        // Regression: productivity unboxed the nullable order-items SUM on a worked
+        // shift day (NPE -> 500). Must return 200 with attendance scored from the shift.
+        get(base(ctx.businessId()) + "/employee-performance?startDate=" + day + "&endDate=" + day,
+                ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].metrics.attendanceRate").value(100.0))
+                .andExpect(jsonPath("$[0].metrics.ontimeRate").value(100.0))
+                .andExpect(jsonPath("$[0].metrics.productivity").value(0.0));
+    }
+
+    @Test
+    void employeePerformance_nonShiftTrackedRole_attendanceNotApplicable() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // SHOP_MANAGER / admins are not clock-in-gated (optional shift) — the report
+        // must not score them on attendance/on-time and must not look up shifts for them.
+        CreatedEmployee manager = createEmployeeWithId(ctx, "SHOP_MANAGER");
+
+        get(base(ctx.businessId())
+                        + "/employee-performance?startDate=" + today() + "&endDate=" + today()
+                        + "&employeeId=" + manager.id(),
+                ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].metrics.attendanceRate").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$[0].metrics.ontimeRate").value(org.hamcrest.Matchers.nullValue()));
     }
 
     // ---------------------------------------------------------------------

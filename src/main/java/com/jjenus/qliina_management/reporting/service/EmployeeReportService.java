@@ -5,6 +5,7 @@ import com.jjenus.qliina_management.employee.model.EmployeePerformance;
 import com.jjenus.qliina_management.employee.model.EmployeeShift;
 import com.jjenus.qliina_management.employee.repository.EmployeePerformanceRepository;
 import com.jjenus.qliina_management.employee.repository.EmployeeShiftRepository;
+import com.jjenus.qliina_management.employee.service.ShiftGateService;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
@@ -33,6 +34,7 @@ public class EmployeeReportService {
     private final QualityCheckRepository qualityRepository;
     private final EmployeeShiftRepository shiftRepository;
     private final EmployeePerformanceRepository performanceRepository;
+    private final ShiftGateService shiftGate;
     
     public List<EmployeePerfDTO> generateEmployeePerformanceReport(UUID businessId, EmployeePerfRequest request) {
         LocalDateTime startDateTime = request.getStartDate().atStartOfDay();
@@ -56,7 +58,8 @@ public class EmployeeReportService {
                 continue;
             }
             
-            EmployeePerfDTO perf = generateEmployeePerformance(employee, request.getStartDate(), request.getEndDate());
+            EmployeePerfDTO perf = generateEmployeePerformance(
+                employee, request.getStartDate(), request.getEndDate(), businessId);
             results.add(perf);
         }
         
@@ -74,67 +77,76 @@ public class EmployeeReportService {
         return results;
     }
     
-    private EmployeePerfDTO generateEmployeePerformance(User employee, LocalDate startDate, LocalDate endDate) {
+    private EmployeePerfDTO generateEmployeePerformance(User employee, LocalDate startDate, LocalDate endDate, UUID businessId) {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
-        
+
+        String primaryRole = getPrimaryRole(employee);
+
         Integer ordersProcessed = orderRepository.countByEmployeeIdAndDateRange(
             employee.getId(), startDateTime, endDateTime);
-        
+
         Integer itemsProcessed = orderRepository.countItemsByEmployeeIdAndDateRange(
             employee.getId(), startDateTime, endDateTime);
-        
+
         BigDecimal revenueHandled = orderRepository.sumRevenueByEmployeeIdAndDateRange(
             employee.getId(), startDateTime, endDateTime);
-        
+
         Double qualityScore = qualityRepository.averageScoreByEmployeeIdAndDateRange(
             employee.getId(), startDateTime, endDateTime);
-        
-        // Calculate attendance
-        List<EmployeeShift> shifts = shiftRepository.findByEmployeeIdAndDateRange(
-            employee.getId(), startDate, endDate);
-        
-        long totalWorkingDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        long daysPresent = shifts.stream()
-            .filter(s -> s.getActualStart() != null)
-            .count();
-        
-        double attendanceRate = totalWorkingDays > 0 ? 
-            (daysPresent * 100.0 / totalWorkingDays) : 0;
-        
-        // Calculate on-time rate
-        long onTimeDays = shifts.stream()
-            .filter(s -> s.getActualStart() != null && 
-                !s.getActualStart().isAfter(s.getScheduledStart().plusMinutes(15)))
-            .count();
-        
-        double ontimeRate = daysPresent > 0 ? 
-            (onTimeDays * 100.0 / daysPresent) : 0;
-        
-        // Calculate productivity (items per hour)
-        long totalMinutes = shifts.stream()
-            .filter(s -> s.getTotalWorkMinutes() != null)
-            .mapToLong(EmployeeShift::getTotalWorkMinutes)
-            .sum();
-        
+
+        // Attendance/on-time are only meaningful for clock-in-gated roles (workers).
+        // Admins/managers have optional shifts and must not be looked up or scored
+        // against shift attendance.
+        boolean shiftTracked = shiftGate.isClockRequired(primaryRole, businessId);
+
+        Double attendanceRate = null;
+        Double ontimeRate = null;
+        long totalMinutes = 0;
+        if (shiftTracked) {
+            List<EmployeeShift> shifts = shiftRepository.findByEmployeeIdAndDateRange(
+                employee.getId(), startDate, endDate);
+
+            long totalWorkingDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+            long daysPresent = shifts.stream()
+                .filter(s -> s.getActualStart() != null)
+                .count();
+
+            attendanceRate = totalWorkingDays > 0 ?
+                (daysPresent * 100.0 / totalWorkingDays) : 0;
+
+            long onTimeDays = shifts.stream()
+                .filter(s -> s.getActualStart() != null &&
+                    !s.getActualStart().isAfter(s.getScheduledStart().plusMinutes(15)))
+                .count();
+
+            ontimeRate = daysPresent > 0 ?
+                (onTimeDays * 100.0 / daysPresent) : 0;
+
+            totalMinutes = shifts.stream()
+                .filter(s -> s.getTotalWorkMinutes() != null)
+                .mapToLong(EmployeeShift::getTotalWorkMinutes)
+                .sum();
+        }
+
         double hoursWorked = totalMinutes / 60.0;
-        double productivity = hoursWorked > 0 ? 
-            itemsProcessed / hoursWorked : 0;
-        
+        int processedItems = itemsProcessed != null ? itemsProcessed : 0;
+        double productivity = hoursWorked > 0 ? processedItems / hoursWorked : 0;
+
         // Get performance from database if available
         Optional<EmployeePerformance> savedPerf = performanceRepository.findByEmployeeIdAndPeriod(
             employee.getId(), startDate, endDate);
-        
+
         double targetAchievement = savedPerf.map(EmployeePerformance::getTargetAchievement)
             .orElse(0.0);
-        
+
         // Daily breakdown
         List<EmployeePerfDTO.DailyMetricDTO> dailyBreakdown = generateDailyBreakdown(
-            employee.getId(), startDate, endDate);
-        
+            employee.getId(), startDate, endDate, shiftTracked);
+
         EmployeePerfDTO.MetricsDTO metrics = EmployeePerfDTO.MetricsDTO.builder()
             .ordersProcessed(ordersProcessed != null ? ordersProcessed : 0)
-            .itemsProcessed(itemsProcessed != null ? itemsProcessed : 0)
+            .itemsProcessed(processedItems)
             .revenueHandled(revenueHandled != null ? revenueHandled : BigDecimal.ZERO)
             .qualityScore(qualityScore != null ? qualityScore : 0.0)
             .attendanceRate(attendanceRate)
@@ -142,11 +154,11 @@ public class EmployeeReportService {
             .productivity(productivity)
             .targetAchievement(targetAchievement)
             .build();
-        
+
         return EmployeePerfDTO.builder()
             .employeeId(employee.getId())
             .employeeName(employee.getFirstName() + " " + employee.getLastName())
-            .role(getPrimaryRole(employee))
+            .role(primaryRole)
             .period(EmployeePerfDTO.PeriodDTO.builder()
                 .start(startDate)
                 .end(endDate)
@@ -155,9 +167,9 @@ public class EmployeeReportService {
             .dailyBreakdown(dailyBreakdown)
             .build();
     }
-    
+
     private List<EmployeePerfDTO.DailyMetricDTO> generateDailyBreakdown(
-            UUID employeeId, LocalDate startDate, LocalDate endDate) {
+            UUID employeeId, LocalDate startDate, LocalDate endDate, boolean shiftTracked) {
         
         List<EmployeePerfDTO.DailyMetricDTO> daily = new ArrayList<>();
         LocalDate current = startDate;
@@ -176,13 +188,16 @@ public class EmployeeReportService {
                 employeeId, dayStart, dayEnd);
             
             // Get hours worked
-            List<EmployeeShift> dayShifts = shiftRepository.findByEmployeeIdAndDateRange(
-                employeeId, current, current);
-            
-            double hoursWorked = dayShifts.stream()
-                .filter(s -> s.getTotalWorkMinutes() != null)
-                .mapToDouble(s -> s.getTotalWorkMinutes() / 60.0)
-                .sum();
+            double hoursWorked = 0.0;
+            if (shiftTracked) {
+                List<EmployeeShift> dayShifts = shiftRepository.findByEmployeeIdAndDateRange(
+                    employeeId, current, current);
+
+                hoursWorked = dayShifts.stream()
+                    .filter(s -> s.getTotalWorkMinutes() != null)
+                    .mapToDouble(s -> s.getTotalWorkMinutes() / 60.0)
+                    .sum();
+            }
             
             daily.add(EmployeePerfDTO.DailyMetricDTO.builder()
                 .date(current)
@@ -200,10 +215,14 @@ public class EmployeeReportService {
     
     private double calculatePerformanceScore(EmployeePerfDTO perf) {
         EmployeePerfDTO.MetricsDTO m = perf.getMetrics();
-        return (m.getQualityScore() * 0.3) +
-               (m.getProductivity() * 0.3) +
-               (m.getAttendanceRate() * 0.2) +
-               (m.getTargetAchievement() * 0.2);
+        double quality = m.getQualityScore() != null ? m.getQualityScore() : 0.0;
+        double productivity = m.getProductivity() != null ? m.getProductivity() : 0.0;
+        double attendance = m.getAttendanceRate() != null ? m.getAttendanceRate() : 0.0;
+        double target = m.getTargetAchievement() != null ? m.getTargetAchievement() : 0.0;
+        return (quality * 0.3) +
+               (productivity * 0.3) +
+               (attendance * 0.2) +
+               (target * 0.2);
     }
     
     private boolean hasRole(User user, String roleName) {
