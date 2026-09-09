@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjenus.qliina_management.business.service.ServiceCatalogService;
 import com.jjenus.qliina_management.payment.provider.SimulatorPaymentProvider;
+import com.jjenus.qliina_management.payment.service.PaymentProviderService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +20,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import java.time.LocalDateTime;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +39,9 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private SimulatorPaymentProvider simulatorPaymentProvider;
+
+    @Autowired
+    private PaymentProviderService paymentProviderService;
 
     @Autowired
     private ObjectMapper mapper;
@@ -865,5 +871,149 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
         // BusinessException maps to 400 across the API (see ORDER_NOT_FOUND).
         assertProblemDetail(post(reconcileBase(ctx.businessId()) + "/" + UUID.randomUUID() + "/resolve",
                 ctx.accessToken(), Map.of("orderId", UUID.randomUUID().toString())), 400, "RECONCILIATION_NOT_FOUND");
+    }
+
+    // ---------------------------------------------------------------------
+    // PENDING expiry sweep (Phase 3)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void sweep_expiresAbandonedPendingRedirect() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        String json = createPendingRedirect(ctx, orderId);
+        UUID paymentId = readUuid(json, "$.paymentId");
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        // Future cutoff sweeps every abandoned PENDING/PENDING authorization.
+        int swept = paymentProviderService.sweepExpiredPendingBefore(LocalDateTime.now().plusMinutes(5));
+        org.junit.jupiter.api.Assertions.assertTrue(swept >= 1);
+
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("FAILED"));
+        // providerStatus rides the list DTO, not the detail DTO.
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=FAILED", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.content[0].providerStatus").value("EXPIRED"));
+        // Expired funds never count as paid.
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=COMPLETED", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void sweep_preservesFreshPending_andAmountMismatch() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        String json = createPendingRedirect(ctx, orderId);
+        UUID paymentId = readUuid(json, "$.paymentId");
+
+        // A past/near cutoff must NOT sweep a freshly created authorization.
+        paymentProviderService.sweepExpiredPendingBefore(LocalDateTime.now().minusSeconds(60));
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        // And an AMOUNT_MISMATCH (staff review) PENDING must never be auto-expired,
+        // even under an aggressive future cutoff.
+        String json2 = createPendingRedirect(ctx, orderId);
+        UUID mismatchPaymentId = readUuid(json2, "$.paymentId");
+        String providerReference2 = readString(json2, "$.providerReference");
+        simWebhook(providerReference2, "succeeded", 999.0).andExpect(jsonPath("$.status").value("received"));
+
+        paymentProviderService.sweepExpiredPendingBefore(LocalDateTime.now().plusMinutes(30));
+        get(payBase(ctx.businessId()) + "/" + mismatchPaymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("PENDING"));
+        // providerStatus rides the list DTO — the staff-review flag survives the sweep.
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=PENDING", ctx.accessToken())
+                .andExpect(jsonPath("$.content[?(@.id=='" + mismatchPaymentId + "')].providerStatus")
+                        .value(contains("AMOUNT_MISMATCH")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Charge idempotency (Phase 3)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void generatePayment_reissuesActiveLinkIdempotently() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        String first = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID firstId = readUuid(first, "$.paymentId");
+        String firstRef = readString(first, "$.providerReference");
+
+        // Second generate for the same order+provider re-presents the SAME link —
+        // no duplicate charge authorization is stacked.
+        String second = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(firstId, readUuid(second, "$.paymentId"));
+        assertEquals(firstRef, readString(second, "$.providerReference"));
+
+        // One pending authorization in the queue, not two.
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=PENDING", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void generatePayment_idempotencyEndsAfterSettle() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        String first = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator"))
+                .andReturn().getResponse().getContentAsString();
+        UUID firstId = readUuid(first, "$.paymentId");
+        String firstRef = readString(first, "$.providerReference");
+
+        // Settle the first authorization via webhook.
+        simWebhook(firstRef, "succeeded", 7.0).andExpect(jsonPath("$.status").value("received"));
+        get(payBase(ctx.businessId()) + "/" + firstId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        // Once its authorization settles (order now fully paid), the idempotency
+        // early-return is gone and the paid guard rejects any further generation —
+        // proving no duplicate charge can sneak in behind a stale pending.
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator")), 400, "ORDER_ALREADY_PAID");
+    }
+
+    // ---------------------------------------------------------------------
+    // Provider refund on a BYO-connected business (Phase 3)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void refund_providerPaymentOnByoBusiness() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        put(providersBase(ctx.businessId()) + "/simulator/connection", ctx.accessToken(),
+                Map.of("mode", "BYO", "secretKey", "sk_test_business_123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connectionMode").value("BYO"));
+
+        // Settle a provider-backed card charge through the BYO connection.
+        UUID orderId = newOrder(ctx);
+        String json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "simulator"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andReturn().getResponse().getContentAsString();
+        UUID paymentId = readUuid(json, "$.paymentId");
+
+        // Refund routes through the business's own connection context, never
+        // fail-closing merely because the platform key differs.
+        post(payBase(ctx.businessId()) + "/" + paymentId + "/refund",
+                ctx.accessToken(), Map.of("amount", 7.0, "reason", "Customer request"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.originalPaymentId").value(paymentId.toString()));
+
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("REFUNDED"));
     }
 }

@@ -99,13 +99,30 @@ config. (Archived previous checklist: `archive/PRODUCTION_READINESS.md`.)
 > charge.failed → FAILED, unmatched-fund item, resolve → RESOLVED + scoping, unknown item).
 > Full `./mvnw test` green (580).
 
-## ⬜ Phase 3 — Ops hardening
+## ✅ Phase 3 — Ops hardening
 
-- [ ] **PENDING sweep** — scheduled expiry/cleanup of abandoned PENDING payments.
-- [ ] **Charge idempotency** — single active `PENDING` per order+provider to
-      prevent duplicate charges.
-- [ ] **Provider refund parity** — `refund` routed through the business's own
-      connection (subaccount / BYO credentials).
+- [x] **PENDING sweep** — scheduled expiry/cleanup of abandoned PENDING payments.
+      `sweepExpiredPendingBefore(cutoff)` marks `status=PENDING` +
+      `providerStatus=PENDING` (only) as `FAILED` / `providerStatus=EXPIRED` —
+      staff-review states like `AMOUNT_MISMATCH` are preserved — appends an
+      order timeline entry and a `PAYMENT_UPDATED` WS event. Runs nightly
+      (`app.payments.pending-expiry-cron`, default `0 15 3 * * *`) with
+      `app.payments.pending-expiry-hours` (default 24, env
+      `PAYMENTS_PENDING_EXPIRY_HOURS`) cutoff.
+- [x] **Charge idempotency** — `generatePaymentLink` re-presents a single active
+      `PENDING` per order+provider (`findPendingByOrderAndProvider`, both status
+      and providerStatus `PENDING`): re-opening Link/QR returns the same
+      payment/checkoutUrl instead of stacking a duplicate charge; once settled or
+      swept the authorization is gone and the normal guards apply.
+- [x] **Provider refund parity** — `verify(...)`/`refund(...)` gained default
+      `Connection`-aware overloads on the SPI; `PaymentProviderService` resolves
+      the business's connection (subaccount / decrypted BYO credentials) and
+      verifies/refunds with it. Paystack/Flutterwave override to authenticate a
+      BYO business's recheck/refund with its own secret (falling back to the
+      platform key); simulator inherits the defaults. `refundPayment` no longer
+      fail-closes on the platform key when BYO credentials exist.
+
+> Full `./mvnw test` green (585).
 
 ## Verify
 

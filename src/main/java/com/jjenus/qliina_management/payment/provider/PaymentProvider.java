@@ -60,7 +60,26 @@ public interface PaymentProvider {
 
     VerifyResult verify(String providerReference);
 
+    /**
+     * Verifies a charge using the business's own connection context. Defaults to
+     * {@link #verify(String)} for providers whose platform secret is always the
+     * correct credential; BYO-connected businesses override this so rechecking
+     * authenticates with the merchant's own key.
+     */
+    default VerifyResult verify(String providerReference, Connection connection) {
+        return verify(providerReference);
+    }
+
     RefundResult refund(RefundRequest request);
+
+    /**
+     * Reverses a charge using the business's own connection context. Defaults to
+     * {@link #refund(RefundRequest)}; BYO-connected businesses override this so
+     * the reversal authenticates with the merchant's own key.
+     */
+    default RefundResult refund(RefundRequest request, Connection connection) {
+        return refund(request);
+    }
 
     /** Parses a raw webhook payload into a canonical event for reconciliation. */
     WebhookEvent parseWebhook(String rawPayload, Map<String, String> headers);

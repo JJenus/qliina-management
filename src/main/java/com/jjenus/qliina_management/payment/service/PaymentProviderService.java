@@ -20,6 +20,7 @@ import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,9 @@ public class PaymentProviderService {
 
     @Value("${app.payments.currency:NGN}")
     private String currency;
+
+    @Value("${app.payments.pending-expiry-hours:24}")
+    private long pendingExpiryHours;
 
     /** A provider plus the business's resolved connection context (ready to charge). */
     private record Connectable(PaymentProvider provider, PaymentProvider.Connection connection) {
@@ -138,6 +142,33 @@ public class PaymentProviderService {
         }
         Connectable connectable = requireConnectable(businessId, request.getProvider());
         PaymentProvider provider = connectable.provider();
+
+        // Idempotency: if there is already an active (still PENDING) authorization for
+        // this order + provider, return it rather than stacking a duplicate charge.
+        List<OrderPayment> existing = paymentRepository.findPendingByOrderAndProvider(orderId, provider.getName());
+        if (!existing.isEmpty()) {
+            OrderPayment active = existing.get(0);
+            String checkoutUrl = active.getMetadata() != null
+                    ? (String) active.getMetadata().get("checkoutUrl") : null;
+            BigDecimal orderTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+            BigDecimal settled = paymentRepository.sumCompletedPaymentsByOrderId(orderId);
+            BigDecimal balanceDue = settled.compareTo(orderTotal) >= 0 ? BigDecimal.ZERO : orderTotal.subtract(settled);
+            return GeneratePaymentResultDTO.builder()
+                    .paymentId(active.getId())
+                    .orderId(orderId)
+                    .orderNumber(order.getOrderNumber())
+                    .amount(active.getAmount())
+                    .method(active.getMethod())
+                    .reference(active.getReference())
+                    .provider(active.getProvider())
+                    .providerReference(active.getProviderReference())
+                    .status("PENDING")
+                    .checkoutUrl(checkoutUrl)
+                    .qrPayload(checkoutUrl)
+                    .balanceDue(balanceDue)
+                    .isFullyPaid(false)
+                    .build();
+        }
 
         String method = request.getMethod() != null ? request.getMethod().trim()
                 : provider.supportedMethods().stream().findFirst().orElse("CARD");
@@ -243,7 +274,8 @@ public class PaymentProviderService {
         }
 
         PaymentProvider provider = registry.require(payment.getProvider());
-        PaymentProvider.VerifyResult result = provider.verify(payment.getProviderReference());
+        PaymentProvider.Connection connection = configService.resolveConnection(businessId, provider);
+        PaymentProvider.VerifyResult result = provider.verify(payment.getProviderReference(), connection);
 
         boolean nowSettled = result.paid() && !"COMPLETED".equals(payment.getStatus());
         if (nowSettled) {
@@ -328,12 +360,69 @@ public class PaymentProviderService {
     @Transactional
     public PaymentProvider.RefundResult refundPayment(OrderPayment payment) {
         PaymentProvider provider = registry.require(payment.getProvider());
-        if (!provider.isConfigured()) {
+        PaymentProvider.Connection connection = configService.resolveConnection(payment.getBusinessId(), provider);
+        if (!provider.isConfigured() && connection.credentials() == null) {
             throw new BusinessException(payment.getProvider() + " is not configured", "PROVIDER_NOT_CONFIGURED",
                     "provider");
         }
         return provider.refund(new PaymentProvider.RefundRequest(payment.getProviderReference(),
-                payment.getAmount(), "POS order refund", payment.getId().toString()));
+                payment.getAmount(), "POS order refund", payment.getId().toString()), connection);
+    }
+
+    // ------------------------------------------------------------- sweep
+
+    /**
+     * Marks abandoned PENDING authorizations as FAILED/EXPIRED. Only authorizations
+     * where both {@code status} and {@code providerStatus} are {@code PENDING} are
+     * swept — staff-review states like {@code AMOUNT_MISMATCH} are preserved.
+     *
+     * @param cutoff the instant at (or after) which a pending payment is considered abandoned
+     * @return the number of payments expired
+     */
+    @Transactional
+    public int sweepExpiredPendingBefore(LocalDateTime cutoff) {
+        List<OrderPayment> candidates = paymentRepository.findExpiredPendingBefore(cutoff);
+        int expired = 0;
+        for (OrderPayment payment : candidates) {
+            if (!"PENDING".equals(payment.getStatus()) || !"PENDING".equals(payment.getProviderStatus())) {
+                continue;
+            }
+            payment.setStatus("FAILED");
+            payment.setProviderStatus("EXPIRED");
+            paymentRepository.save(payment);
+
+            Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+            if (order != null) {
+                OrderTimeline timeline = new OrderTimeline();
+                timeline.setOrder(order);
+                timeline.setType("PAYMENT");
+                timeline.setDescription("Payment request of " + payment.getAmount() + " "
+                        + payment.getMethod() + " expired without authorization");
+                timeline.setTimestamp(LocalDateTime.now());
+                timeline.setUserName("System");
+                order.getTimeline().add(timeline);
+                orderRepository.save(order);
+            }
+
+            publishPaymentEvent(
+                    payment.getBusinessId(), payment.getId(), payment.getOrderId(),
+                    "FAILED", payment.getProvider(), payment.getProviderReference(),
+                    payment.getAmount(), "Payment request expired without authorization");
+            expired++;
+        }
+        if (expired > 0) {
+            log.info("Swept {} abandoned PENDING payment(s) older than {}", expired, cutoff);
+        }
+        return expired;
+    }
+
+    @Scheduled(cron = "${app.payments.pending-expiry-cron:0 15 3 * * *}")
+    void sweepExpiredPending() {
+        try {
+            sweepExpiredPendingBefore(LocalDateTime.now().minusHours(pendingExpiryHours));
+        } catch (Exception e) {
+            log.error("PENDING payment sweep failed", e);
+        }
     }
 
     private void settlePayment(OrderPayment payment, String providerStatus) {

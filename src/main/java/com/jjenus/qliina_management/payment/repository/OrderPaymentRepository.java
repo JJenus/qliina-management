@@ -45,6 +45,25 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
     BigDecimal sumCompletedPaymentsByOrderId(@Param("orderId") UUID orderId);
 
     Optional<OrderPayment> findByProviderAndProviderReference(String provider, String providerReference);
+
+    /**
+     * The single active (unsettled) PENDING payment for an order+provider — the
+     * idempotency gate for link generation. Re-issuing a link re-presents an
+     * existing authorization instead of stacking a duplicate charge.
+     */
+    @Query("SELECT op FROM OrderPayment op WHERE op.orderId = :orderId AND op.provider = :provider " +
+           "AND op.status = 'PENDING' ORDER BY op.createdAt DESC")
+    List<OrderPayment> findPendingByOrderAndProvider(
+            @Param("orderId") UUID orderId, @Param("provider") String provider);
+
+    /**
+     * Abandoned PENDING authorizations for the expiry sweep. Only requests that
+     * are genuinely awaiting the customer (no staff-review flag like
+     * {@code AMOUNT_MISMATCH}) and older than the cutoff are candidates.
+     */
+    @Query("SELECT op FROM OrderPayment op WHERE op.status = 'PENDING' AND op.providerStatus = 'PENDING' " +
+           "AND op.createdAt < :cutoff")
+    List<OrderPayment> findExpiredPendingBefore(@Param("cutoff") LocalDateTime cutoff);
     
     @Query("SELECT op FROM OrderPayment op WHERE op.businessId = :businessId AND op.shopId = :shopId")
     Page<OrderPayment> findByBusinessIdAndShopId(

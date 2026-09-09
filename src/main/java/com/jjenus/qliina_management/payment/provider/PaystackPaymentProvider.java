@@ -134,7 +134,16 @@ public class PaystackPaymentProvider implements PaymentProvider {
     @Override
     public VerifyResult verify(String providerReference) {
         requireConfigured();
-        String raw = rawGet("/transaction/verify/" + safeReference(providerReference));
+        return verifyWith(providerReference, secretKey);
+    }
+
+    @Override
+    public VerifyResult verify(String providerReference, Connection connection) {
+        return verifyWith(providerReference, effectiveConnectionSecret(connection));
+    }
+
+    private VerifyResult verifyWith(String providerReference, String secret) {
+        String raw = rawGet("/transaction/verify/" + safeReference(providerReference), secret);
         try {
             JsonNode root = mapper.readTree(raw);
             JsonNode data = root.path("data");
@@ -151,11 +160,20 @@ public class PaystackPaymentProvider implements PaymentProvider {
     @Override
     public RefundResult refund(RefundRequest request) {
         requireConfigured();
+        return refundWith(request, secretKey);
+    }
+
+    @Override
+    public RefundResult refund(RefundRequest request, Connection connection) {
+        return refundWith(request, effectiveConnectionSecret(connection));
+    }
+
+    private RefundResult refundWith(RefundRequest request, String secret) {
         long amountKobo = request.amount().multiply(MINOR_UNIT).setScale(0, RoundingMode.HALF_UP).longValueExact();
         Map<String, Object> body = Map.of(
                 "transaction", request.providerReference(),
                 "amount", amountKobo);
-        String raw = rawPost("/refund", body);
+        String raw = rawPost("/refund", body, secret);
         try {
             JsonNode root = mapper.readTree(raw);
             boolean ok = root.path("status").asBoolean();
@@ -171,6 +189,16 @@ public class PaystackPaymentProvider implements PaymentProvider {
             log.error("[paystack] could not parse refund response", e);
             return new RefundResult(false, request.providerReference(), raw, "Unparseable Paystack refund");
         }
+    }
+
+    /** Secured connection secret: BYO credentials win over the platform key; refuse if none. */
+    private String effectiveConnectionSecret(Connection connection) {
+        String secret = connection != null && connection.credentials() != null
+                && !connection.credentials().isBlank() ? connection.credentials() : secretKey;
+        if (secret.isBlank()) {
+            requireConfigured();
+        }
+        return secret;
     }
 
     @Override
@@ -234,10 +262,14 @@ public class PaystackPaymentProvider implements PaymentProvider {
     }
 
     private String rawGet(String path) {
+        return rawGet(path, secretKey);
+    }
+
+    private String rawGet(String path, String secret) {
         try {
             return client.get()
                     .uri(path)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secretKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secret)
                     .retrieve()
                     .body(String.class);
         } catch (RestClientResponseException e) {

@@ -124,7 +124,16 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
     @Override
     public VerifyResult verify(String providerReference) {
         requireConfigured();
-        String raw = rawGet("/transactions/" + safeReference(providerReference) + "/verify");
+        return verifyWith(providerReference, secretKey);
+    }
+
+    @Override
+    public VerifyResult verify(String providerReference, Connection connection) {
+        return verifyWith(providerReference, effectiveConnectionSecret(connection));
+    }
+
+    private VerifyResult verifyWith(String providerReference, String secret) {
+        String raw = rawGet("/transactions/" + safeReference(providerReference) + "/verify", secret);
         try {
             JsonNode root = mapper.readTree(raw);
             JsonNode data = root.path("data");
@@ -141,8 +150,17 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
     @Override
     public RefundResult refund(RefundRequest request) {
         requireConfigured();
+        return refundWith(request, secretKey);
+    }
+
+    @Override
+    public RefundResult refund(RefundRequest request, Connection connection) {
+        return refundWith(request, effectiveConnectionSecret(connection));
+    }
+
+    private RefundResult refundWith(RefundRequest request, String secret) {
         Map<String, Object> body = Map.of("amount", request.amount());
-        String raw = rawPost("/transactions/" + safeReference(request.providerReference()) + "/refund", body);
+        String raw = rawPost("/transactions/" + safeReference(request.providerReference()) + "/refund", body, secret);
         try {
             JsonNode root = mapper.readTree(raw);
             String status = root.path("status").asText("");
@@ -160,6 +178,16 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
             log.error("[flutterwave] could not parse refund response", e);
             return new RefundResult(false, request.providerReference(), raw, "Unparseable Flutterwave refund");
         }
+    }
+
+    /** Secured connection secret: BYO credentials win over the platform key; refuse if none. */
+    private String effectiveConnectionSecret(Connection connection) {
+        String secret = connection != null && connection.credentials() != null
+                && !connection.credentials().isBlank() ? connection.credentials() : secretKey;
+        if (secret.isBlank()) {
+            requireConfigured();
+        }
+        return secret;
     }
 
     @Override
@@ -213,10 +241,14 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
     }
 
     private String rawGet(String path) {
+        return rawGet(path, secretKey);
+    }
+
+    private String rawGet(String path, String secret) {
         try {
             return client.get()
                     .uri(path)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secretKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secret)
                     .retrieve()
                     .body(String.class);
         } catch (RestClientResponseException e) {

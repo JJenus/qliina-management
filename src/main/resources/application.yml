@@ -81,6 +81,8 @@ app:
       refill-per-minute: ${RATE_LIMIT_LOGIN_REFILL:10}
   payments:
     currency: ${PAYMENTS_CURRENCY:NGN}
+    pending-expiry-hours: ${PAYMENTS_PENDING_EXPIRY_HOURS:24}
+    pending-expiry-cron: ${PAYMENTS_PENDING_EXPIRY_CRON:0 15 3 * * *}
     providers:
       simulator:
         enabled: ${PAYMENTS_SIMULATOR_ENABLED:true} # false in prod (sandbox never live)
