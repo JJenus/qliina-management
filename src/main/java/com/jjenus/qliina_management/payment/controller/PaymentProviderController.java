@@ -2,6 +2,7 @@ package com.jjenus.qliina_management.payment.controller;
 
 import com.jjenus.qliina_management.payment.dto.PaymentProviderDTO;
 import com.jjenus.qliina_management.payment.dto.PaymentVerifyDTO;
+import com.jjenus.qliina_management.payment.dto.UpdateProviderConnectionRequest;
 import com.jjenus.qliina_management.payment.service.PaymentProviderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -48,6 +49,23 @@ public class PaymentProviderController {
             @Parameter(description = "Desired enabled state", required = true)
             @RequestParam boolean enabled) {
         return ResponseEntity.ok(paymentProviderService.setProviderEnabled(businessId, provider, enabled));
+    }
+
+    @Operation(
+        summary = "Set a provider's connection model",
+        description = "Choose how this business connects: DISCONNECTED (no gateway), PLATFORM "
+                + "(routed through Qliina's account / subaccount) or BYO (business's own credentials). "
+                + "PLATFORM/BYO also enable the provider; DISCONNECTED disables and clears it."
+    )
+    @PutMapping("/{provider}/connection")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'admin.settings')")
+    public ResponseEntity<PaymentProviderDTO> setProviderConnection(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+            @Parameter(description = "Provider name", required = true)
+            @PathVariable String provider,
+            @RequestBody UpdateProviderConnectionRequest request) {
+        return ResponseEntity.ok(paymentProviderService.setProviderConnection(businessId, provider, request));
     }
 
     @Operation(

@@ -56,12 +56,24 @@ public class PaymentProviderService {
                         "PROVIDER_UNKNOWN", "provider"));
     }
 
+    @Transactional
+    public PaymentProviderDTO setProviderConnection(UUID businessId, String providerName,
+            com.jjenus.qliina_management.payment.dto.UpdateProviderConnectionRequest request) {
+        configService.setProviderConnection(businessId, providerName, request);
+        return configService.list(businessId).stream()
+                .filter(dto -> dto.getName().equalsIgnoreCase(providerName))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("Unknown payment provider: " + providerName,
+                        "PROVIDER_UNKNOWN", "provider"));
+    }
+
     // ----------------------------------------------------------- checkout
 
     /**
-     * Requires an enabled and configured provider, then initiates the charge.
+     * Requires an enabled and connectable provider, then initiates the charge.
      * Fail-closed: disabled/unknown/unconfigured providers never touch the
-     * downstream processor.
+     * downstream processor. The business's connection model (platform subaccount
+     * or decrypted BYO credentials) rides on the charge request.
      */
     public PaymentProvider.ChargeResult chargeOnline(UUID businessId, String providerName,
             BigDecimal amount, String customerEmail, String customerName, String reference) {
@@ -71,12 +83,18 @@ public class PaymentProviderService {
             throw new BusinessException("Payment provider is disabled for this business", "PROVIDER_DISABLED",
                     "provider");
         }
-        if (!provider.isConfigured()) {
+        PaymentProvider.Connection connection = configService.resolveConnection(businessId, provider);
+        boolean connectable = switch (connection.mode()) {
+            case "PLATFORM" -> provider.isConfigured();
+            case "BYO" -> connection.credentials() != null;
+            default -> false;
+        };
+        if (!connectable) {
             throw new BusinessException("Payment provider is not configured", "PROVIDER_NOT_CONFIGURED",
                     "provider");
         }
         return provider.charge(new PaymentProvider.ChargeRequest(
-                amount, currency, customerEmail, customerName, reference, null));
+                amount, currency, customerEmail, customerName, reference, null, connection));
     }
 
     // ---------------------------------------------------------- settlement

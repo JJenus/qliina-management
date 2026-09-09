@@ -70,6 +70,13 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     }
 
     @Override
+    public boolean supportsPlatformSubaccounts() {
+        // Contributes to isConfigured() because enablement is derived from the
+        // same property, so platform-connected businesses always see it true.
+        return true;
+    }
+
+    @Override
     public ChargeResult charge(ChargeRequest request) {
         String txnId = "sim_" + UUID.randomUUID();
         if (redirectMode) {

@@ -35,6 +35,15 @@ public interface PaymentProvider {
     /** True when this provider has the secrets it needs to talk to the processor. */
     boolean isConfigured();
 
+    /**
+     * True when charges can be routed through a Qliina-owned subaccount
+     * ({@code PLATFORM} mode). Real processors typically support it; providers
+     * that do not reject a {@code platformSubaccountId} at configuration time.
+     */
+    default boolean supportsPlatformSubaccounts() {
+        return false;
+    }
+
     ChargeResult charge(ChargeRequest request);
 
     VerifyResult verify(String providerReference);
@@ -48,7 +57,16 @@ public interface PaymentProvider {
     boolean verifyWebhookSignature(String rawPayload, Map<String, String> headers);
 
     record ChargeRequest(BigDecimal amount, String currency, String customerEmail,
-                         String customerName, String reference, String description) {
+                         String customerName, String reference, String description, Connection connection) {
+    }
+
+    /**
+     * Per-business context resolved at charge time: how this business connects
+     * ({@code PLATFORM} subaccount vs {@code BYO} business credentials) and the
+     * effective secret to authenticate with. {@code credentials()} is the already
+     * decrypted BYO secret key; it is null for platform-connected charges.
+     */
+    record Connection(String mode, String platformSubaccountId, String credentials) {
     }
 
     record ChargeResult(boolean approved, String providerReference, String checkoutUrl,

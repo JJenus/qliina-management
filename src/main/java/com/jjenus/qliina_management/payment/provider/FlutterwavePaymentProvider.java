@@ -73,17 +73,29 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
 
     @Override
     public ChargeResult charge(ChargeRequest request) {
-        requireConfigured();
-        Map<String, Object> body = Map.of(
-                "tx_ref", request.reference(),
-                "amount", request.amount().toPlainString(),
-                "currency", request.currency(),
-                "payment_options", "card,banktransfer",
-                "customer", Map.of(
-                        "email", request.customerEmail() == null ? "" : request.customerEmail(),
-                        "name", request.customerName() == null ? "" : request.customerName()));
-        String raw = rawPost("/payments", body);
+        String secret = effectiveSecret(request);
+        if (secret.isBlank()) {
+            requireConfigured();
+        }
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("tx_ref", request.reference());
+        body.put("amount", request.amount().toPlainString());
+        body.put("currency", request.currency());
+        body.put("payment_options", "card,banktransfer");
+        body.put("customer", Map.of(
+                "email", request.customerEmail() == null ? "" : request.customerEmail(),
+                "name", request.customerName() == null ? "" : request.customerName()));
+        String raw = rawPost("/payments", body, secret);
         return parseInitialize(raw);
+    }
+
+    /** BYO charges authenticate with the business's own secret, not the platform key. */
+    private String effectiveSecret(ChargeRequest request) {
+        if (request.connection() != null && request.connection().credentials() != null
+                && !request.connection().credentials().isBlank()) {
+            return request.connection().credentials();
+        }
+        return secretKey;
     }
 
     private ChargeResult parseInitialize(String raw) {
@@ -178,10 +190,14 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
     }
 
     private String rawPost(String path, Map<String, Object> body) {
+        return rawPost(path, body, secretKey);
+    }
+
+    private String rawPost(String path, Map<String, Object> body, String secret) {
         try {
             return client.post()
                     .uri(path)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secretKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secret)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()

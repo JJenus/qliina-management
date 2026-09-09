@@ -75,17 +75,38 @@ public class PaystackPaymentProvider implements PaymentProvider {
     }
 
     @Override
+    public boolean supportsPlatformSubaccounts() {
+        return true;
+    }
+
+    @Override
     public ChargeResult charge(ChargeRequest request) {
-        requireConfigured();
+        String secret = effectiveSecret(request);
+        if (secret.isBlank()) {
+            requireConfigured();
+        }
         long amountKobo = request.amount().multiply(MINOR_UNIT).setScale(0, RoundingMode.HALF_UP).longValueExact();
 
-        Map<String, Object> body = Map.of(
-                "email", request.customerEmail() == null ? "" : request.customerEmail(),
-                "amount", amountKobo,
-                "currency", request.currency(),
-                "reference", request.reference());
-        String raw = rawPost("/transaction/initialize", body);
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("email", request.customerEmail() == null ? "" : request.customerEmail());
+        body.put("amount", amountKobo);
+        body.put("currency", request.currency());
+        body.put("reference", request.reference());
+        if (request.connection() != null && request.connection().platformSubaccountId() != null
+                && !request.connection().platformSubaccountId().isBlank()) {
+            body.put("subaccount", request.connection().platformSubaccountId());
+        }
+        String raw = rawPost("/transaction/initialize", body, secret);
         return parseInitialize(raw);
+    }
+
+    /** BYO charges authenticate with the business's own secret, not the platform key. */
+    private String effectiveSecret(ChargeRequest request) {
+        if (request.connection() != null && request.connection().credentials() != null
+                && !request.connection().credentials().isBlank()) {
+            return request.connection().credentials();
+        }
+        return secretKey;
     }
 
     private ChargeResult parseInitialize(String raw) {
@@ -192,10 +213,14 @@ public class PaystackPaymentProvider implements PaymentProvider {
     }
 
     private String rawPost(String path, Map<String, Object> body) {
+        return rawPost(path, body, secretKey);
+    }
+
+    private String rawPost(String path, Map<String, Object> body, String secret) {
         try {
             return client.post()
                     .uri(path)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secretKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + secret)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()

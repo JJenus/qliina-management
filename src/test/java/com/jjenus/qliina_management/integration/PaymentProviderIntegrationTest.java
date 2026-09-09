@@ -86,10 +86,19 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$[?(@.name=='simulator')].enabled").value(true))
                 .andExpect(jsonPath("$[?(@.name=='simulator')].configured").value(true))
                 .andExpect(jsonPath("$[?(@.name=='simulator')].available").value(true))
+                // The simulator is platform-connected by default in dev/test; it
+                // carries no business-owned credentials of its own.
+                .andExpect(jsonPath("$[?(@.name=='simulator')].connectionMode").value("PLATFORM"))
+                .andExpect(jsonPath("$[?(@.name=='simulator')].hasCredentials").value(false))
+                .andExpect(jsonPath("$[?(@.name=='simulator')].supportsPlatformSubaccounts").value(true))
                 .andExpect(jsonPath("$[?(@.name=='paystack')].enabled").value(false))
                 .andExpect(jsonPath("$[?(@.name=='paystack')].configured").value(false))
+                .andExpect(jsonPath("$[?(@.name=='paystack')].connectionMode").value("DISCONNECTED"))
+                .andExpect(jsonPath("$[?(@.name=='paystack')].supportsPlatformSubaccounts").value(true))
                 .andExpect(jsonPath("$[?(@.name=='flutterwave')].enabled").value(false))
-                .andExpect(jsonPath("$[?(@.name=='flutterwave')].configured").value(false));
+                .andExpect(jsonPath("$[?(@.name=='flutterwave')].configured").value(false))
+                .andExpect(jsonPath("$[?(@.name=='flutterwave')].connectionMode").value("DISCONNECTED"))
+                .andExpect(jsonPath("$[?(@.name=='flutterwave')].supportsPlatformSubaccounts").value(false));
     }
 
     @Test
@@ -118,6 +127,116 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
         AuthContext ctx = registerBusinessAndOwner();
         assertProblemDetail(patch(providersBase(ctx.businessId()) + "/nope/enabled?enabled=true",
                 ctx.accessToken(), null), 400, "PROVIDER_UNKNOWN");
+    }
+
+    // ---------------------------------------------------------------------
+    // Per-business connection model (Disconnected / Platform / BYO)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void setProviderConnection_byo_encryptsAndCharges() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String base = providersBase(ctx.businessId()) + "/simulator/connection";
+
+        String body = put(base, ctx.accessToken(),
+                Map.of("mode", "BYO", "secretKey", "sk_test_business_123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("simulator"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.connectionMode").value("BYO"))
+                .andExpect(jsonPath("$.hasCredentials").value(true))
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.platformSubaccountId").value(org.hamcrest.Matchers.nullValue()))
+                .andReturn().getResponse().getContentAsString();
+        assertFalse(body.contains("sk_test_business_123"), "credentials must never be echoed");
+
+        UUID orderId = newOrder(ctx);
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 15.0, "method", "CARD", "provider", "simulator"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.provider").value("simulator"));
+    }
+
+    @Test
+    void setProviderConnection_byoWithoutSecretKey_rejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        assertProblemDetail(put(providersBase(ctx.businessId()) + "/simulator/connection",
+                ctx.accessToken(), Map.of("mode", "BYO")), 400, "PROVIDER_CONFIG_INVALID");
+    }
+
+    @Test
+    void setProviderConnection_platformWithSubaccount_charges() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        put(providersBase(ctx.businessId()) + "/simulator/connection", ctx.accessToken(),
+                Map.of("mode", "PLATFORM", "platformSubaccountId", "SUB_ACCT_001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connectionMode").value("PLATFORM"))
+                .andExpect(jsonPath("$.platformSubaccountId").value("SUB_ACCT_001"))
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.hasCredentials").value(false));
+
+        UUID orderId = newOrder(ctx);
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 20.0, "method", "CARD", "provider", "simulator"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void setProviderConnection_disconnected_clearsAndDisables() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String base = providersBase(ctx.businessId()) + "/simulator/connection";
+
+        put(base, ctx.accessToken(), Map.of("mode", "BYO", "secretKey", "sk_test_business_123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(true));
+
+        put(base, ctx.accessToken(), Map.of("mode", "DISCONNECTED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.connectionMode").value("DISCONNECTED"))
+                .andExpect(jsonPath("$.hasCredentials").value(false))
+                .andExpect(jsonPath("$.available").value(false));
+
+        UUID orderId = newOrder(ctx);
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 9.0, "method", "CARD", "provider", "simulator")),
+                400, "PROVIDER_DISABLED");
+    }
+
+    @Test
+    void setProviderConnection_platformUnconfigured_failsClosed() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // Flutterwave has no platform keys in the test env: PLATFORM mode persists
+        // but the provider stays unavailable and every charge fails closed.
+        put(providersBase(ctx.businessId()) + "/flutterwave/connection", ctx.accessToken(),
+                Map.of("mode", "PLATFORM"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.connectionMode").value("PLATFORM"))
+                .andExpect(jsonPath("$.configured").value(false))
+                .andExpect(jsonPath("$.available").value(false));
+
+        UUID orderId = newOrder(ctx);
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 9.0, "method", "CARD", "provider", "flutterwave")),
+                400, "PROVIDER_NOT_CONFIGURED");
+    }
+
+    @Test
+    void setProviderConnection_subaccountOnUnsupportedProvider_rejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        assertProblemDetail(put(providersBase(ctx.businessId()) + "/flutterwave/connection",
+                ctx.accessToken(), Map.of("mode", "PLATFORM", "platformSubaccountId", "SUB_004")),
+                400, "PROVIDER_CONFIG_INVALID");
+    }
+
+    @Test
+    void setProviderConnection_unknownProvider() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        assertProblemDetail(put(providersBase(ctx.businessId()) + "/nope/connection",
+                ctx.accessToken(), Map.of("mode", "DISCONNECTED")), 400, "PROVIDER_UNKNOWN");
     }
 
     // ---------------------------------------------------------------------

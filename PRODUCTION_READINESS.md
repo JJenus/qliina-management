@@ -32,29 +32,36 @@ config. (Archived previous checklist: `archive/PRODUCTION_READINESS.md`.)
       disabled/unknown/unconfigured 400 tests kept; split cases with a no-provider
       leg + declined/pending legs not counted as paid. Full `./mvnw test` green (561).
 
-## ⬜ Phase 1 — Connection model (advanced per-business config)
+## ✅ Phase 1 — Connection model (advanced per-business config)
 
-- [ ] **`PaymentProviderConfig` extension** — `{provider, enabled}` grows to
+- [x] **`PaymentProviderConfig` extension** — `{provider, enabled}` grows to
       `connectionMode` (`DISCONNECTED` | `PLATFORM` | `BYO`), `credentialsEncrypted`
       (AES-GCM via `EncryptionService`, decrypted only inside the payment service),
       and `platformSubaccountId`. Unique `(business_id, provider)` kept. Manual is
       orthogonal — never represented as a provider state; `DISCONNECTED` simply
       means "no gateway".
-- [ ] **SPI per-connection** — `PaymentProvider` gains
+- [x] **SPI per-connection** — `PaymentProvider` gains
       `supportsPlatformSubaccounts()` and the charge path carries the per-business
       connection context (subaccount ref or BYO credentials). `available` for a
       business = `PLATFORM` with the platform flag on, or `BYO` with encrypted
       credentials present; both fail closed otherwise.
-- [ ] **Config surface** — `PaymentProviderDTO` gains `connectionMode` +
+- [x] **Config surface** — `PaymentProviderDTO` gains `connectionMode` +
       `hasCredentials` (never the secret). `PUT /api/v1/{businessId}/payment-providers/{name}/connection`
       accepts `{mode, secretKey?}`; BYO secrets are encrypted at rest and never
       returned to the client.
-- [ ] **Simulator stands in** for both `PLATFORM` (simulated subaccount) and
+- [x] **Simulator stands in** for both `PLATFORM` (simulated subaccount) and
       `BYO` in dev/test; real Paystack/Flutterwave platform keys deferred until
       provider-side platform/subaccount APIs are confirmed.
-- [ ] **Tests** — connection modes persist per business; BYO never surfaces in
+- [x] **Tests** — connection modes persist per business; BYO never surfaces in
       responses; misconfigured/unconfigured connections fail closed; list +
       connection-toggle stay un-clock-gated (settings surface).
+
+> **Known follow-ups (Phase 3/ops):** `verify()`/`refund()`/webhook-signature
+> still use the provider's **platform** secret — a BYO business reconciles via
+> webhooks/PENDING settle until the per-business credential is plumbed through
+> verify/refund too (payment rows carry no connection snapshot yet).
+> `db/baseline.sql` needs regenerating after the next greenfield Postgres bootstrap
+> (3 new nullable columns).
 
 ## ⬜ Phase 2 — Generate payment, scan/QR, webhook auto-link
 
