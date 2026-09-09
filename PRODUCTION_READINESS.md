@@ -63,21 +63,41 @@ config. (Archived previous checklist: `archive/PRODUCTION_READINESS.md`.)
 > `db/baseline.sql` needs regenerating after the next greenfield Postgres bootstrap
 > (3 new nullable columns).
 
-## ⬜ Phase 2 — Generate payment, scan/QR, webhook auto-link
+## ✅ Phase 2 — Generate payment, scan/QR, webhook auto-link
 
-- [ ] **Generate payment** — endpoint creates a `PENDING` `OrderPayment`
-      (amount/method/provider) and returns a customer checkout URL + QR payload
-      (Paystack `authorization_url` / Flutterwave link; simulator `redirectMode`).
-      Excluded from paid totals via
-      `OrderPaymentRepository.sumCompletedPaymentsByOrderId` (`COMPLETED` only).
-- [ ] **Webhook auto-link hardening** — `PaymentProviderService.processWebhook`
-      matches by provider + reference **and cross-checks amount** before settle;
-      `charge.failed` events transition the payment to `FAILED`.
-- [ ] **Unmatched funds queue** — incoming funds with no matching pre-generated
-      `OrderPayment` (e.g. plain transfer to a BYO account) create a
-      staff-reconciliation item instead of being dropped.
-- [ ] **Pending/verify surface** — `PENDING` list for an order + recheck via the
-      existing verify endpoint (`PaymentProviderController`).
+- [x] **Generate payment** — `POST /api/v1/{businessId}/payments/orders/{orderId}/generate`
+      (`@RequireClockIn`, `payment.process`): `GeneratePaymentRequest {amount?, method?, provider}`
+      with amount defaulting to the order balance due (total − `sumCompletedPayments`).
+      Resolves the business's connection (fail-closed: unknown/disabled/unconfigured →
+      `PROVIDER_UNKNOWN`/`PROVIDER_DISABLED`/`PROVIDER_NOT_CONFIGURED`), calls the SPI
+      `initiateCheckout` (new default = `charge`; simulator overrides to always produce a
+      redirect checkout URL), refuses over-balance → `PAYMENT_AMOUNT_EXCEEDS_DUE` and
+      fully-paid/≤0 → `ORDER_ALREADY_PAID`, and persists a `PENDING` `OrderPayment`
+      (reference `ql_<uuid>`, providerReference, providerStatus `PENDING`, metadata
+      `checkoutUrl`, collectedBy = current user) + order-timeline entry. Returns
+      `GeneratePaymentResultDTO {…, checkoutUrl, qrPayload (=checkoutUrl), balanceDue, isFullyPaid}`.
+      PENDING is excluded from paid totals via `sumCompletedPaymentsByOrderId`. The
+      existing `PaymentFilter` `orderId` + `status` supports the PENDING list (no new
+      surface); recheck stays on the existing verify endpoint.
+- [x] **Webhook auto-link hardening** — `PaymentProviderService.processWebhook` matches by
+      provider + reference **and cross-checks amount** before settle: mismatch → payment
+      stays `PENDING` with providerStatus `AMOUNT_MISMATCH` (never settled); `charge.failed`
+      events (SPI `WebhookEvent` gained `chargeFailed`; simulator/paystack/flutterwave
+      adapters updated) transition the payment to `FAILED`.
+- [x] **Unmatched funds queue** — `PaymentReconciliationItem` (global OPEN queue,
+      cross-tenant by design) upserted on (provider, providerReference) when a settled
+      webhook has no matching payment. `GET /api/v1/{businessId}/payment-reconciliation`
+      (`payment.view`, OPEN = all businesses' / RESOLVED = this business's) +
+      `POST …/{itemId}/resolve` (`payment.process`, `{orderId, notes?}` → RESOLVED,
+      validates order belongs to the business). New errorCodes:
+      `RECONCILIATION_NOT_FOUND`, `RECONCILIATION_ALREADY_RESOLVED`, `PROVIDER_CHECKOUT_FAILED`.
+- [x] **Pending/verify surface** — covered by existing endpoints; asserted in tests
+      (`listPayments_pendingFilterCapturesGeneratedLink`).
+
+> **Tests:** 12 new in `PaymentProviderIntegrationTest` (generate default/custom/fail-closed/
+> unknown/already-paid/over-balance, PENDING list filter, amount-mismatch no-settle,
+> charge.failed → FAILED, unmatched-fund item, resolve → RESOLVED + scoping, unknown item).
+> Full `./mvnw test` green (580).
 
 ## ⬜ Phase 3 — Ops hardening
 

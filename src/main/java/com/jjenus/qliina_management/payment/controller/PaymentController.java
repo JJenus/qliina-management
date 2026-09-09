@@ -4,6 +4,7 @@ import com.jjenus.qliina_management.common.PageResponse;
 import com.jjenus.qliina_management.common.RequireClockIn;
 import com.jjenus.qliina_management.common.SuccessResponse;
 import com.jjenus.qliina_management.payment.dto.*;
+import com.jjenus.qliina_management.payment.service.PaymentProviderService;
 import com.jjenus.qliina_management.payment.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,7 @@ import java.util.UUID;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final PaymentProviderService paymentProviderService;
 
     // ==================== Payment Operations ====================
 
@@ -125,6 +127,32 @@ public class PaymentController {
             
             @Valid @RequestBody SplitPaymentRequest request) {
         return ResponseEntity.ok(paymentService.splitPayment(businessId, orderId, request));
+    }
+
+    @Operation(
+        summary = "Generate payment link/QR",
+        description = "Start a hosted checkout for (part of) an order's balance through a " +
+                "connectable provider. Returns a customer-facing checkout URL (also encoded " +
+                "as the QR payload) and persists a PENDING payment that settles when the " +
+                "provider webhook or a manual recheck confirms it."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Checkout link generated"),
+        @ApiResponse(responseCode = "400", description = "Not connectable, over balance, or already paid"),
+        @ApiResponse(responseCode = "404", description = "Order not found"),
+        @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @PostMapping("/orders/{orderId}/generate")
+    @PreAuthorize("hasPermission(#businessId, 'BUSINESS', 'payment.process')")
+    public ResponseEntity<GeneratePaymentResultDTO> generatePaymentLink(
+            @Parameter(description = "Business ID", required = true)
+            @PathVariable UUID businessId,
+
+            @Parameter(description = "Order ID", required = true)
+            @PathVariable UUID orderId,
+
+            @Valid @RequestBody GeneratePaymentRequest request) {
+        return ResponseEntity.ok(paymentProviderService.generatePaymentLink(businessId, orderId, request));
     }
 
     @Operation(

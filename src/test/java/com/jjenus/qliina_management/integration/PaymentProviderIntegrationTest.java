@@ -1,11 +1,15 @@
 package com.jjenus.qliina_management.integration;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjenus.qliina_management.business.service.ServiceCatalogService;
 import com.jjenus.qliina_management.payment.provider.SimulatorPaymentProvider;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.hamcrest.Matchers.contains;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -33,12 +37,52 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private SimulatorPaymentProvider simulatorPaymentProvider;
 
+    @Autowired
+    private ObjectMapper mapper;
+
+    /** Finds a queue item's id by provider reference from a raw content-array JSON document. */
+    private UUID findItemId(String contentJson, String providerReference) throws Exception {
+        JsonNode content = mapper.readTree(contentJson).path("content");
+        for (JsonNode node : content) {
+            if (providerReference.equals(node.path("providerReference").asText())) {
+                return UUID.fromString(node.path("id").asText());
+            }
+        }
+        return null;
+    }
+
     private String providersBase(UUID businessId) {
         return "/api/v1/" + businessId + "/payment-providers";
     }
 
     private String payBase(UUID businessId) {
         return "/api/v1/" + businessId + "/payments";
+    }
+
+    private String reconcileBase(UUID businessId) {
+        return "/api/v1/" + businessId + "/payment-reconciliation";
+    }
+
+    private ResultActions simWebhook(String txn, String event, double amount) throws Exception {
+        return mockMvc.perform(MockMvcRequestBuilders
+                .post("/api/v1/webhooks/payments/simulator")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("x-sim-secret", "sim-secret")
+                .content("{\"txn\":\"" + txn + "\",\"event\":\"charge." + event + "\",\"amount\":" + amount + "}"));
+    }
+
+    /** Creates a redirect (PENDING) provider payment on a fresh 7.0 order. */
+    private String createPendingRedirect(AuthContext ctx, UUID orderId) throws Exception {
+        simulatorPaymentProvider.forceRedirect(true);
+        try {
+            return post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                    ctx.accessToken(), Map.of("amount", 7.0, "method", "CARD", "provider", "simulator"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    .andReturn().getResponse().getContentAsString();
+        } finally {
+            simulatorPaymentProvider.forceRedirect(false);
+        }
     }
 
     private String newPhone() {
@@ -615,5 +659,211 @@ class PaymentProviderIntegrationTest extends BaseIntegrationTest {
         UUID paymentId = readUuid(json, "$.paymentId");
         get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
                 .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Generate payment / checkout link (Phase 2)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void generatePayment_createsPendingCheckoutLink() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        String json = post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.provider").value("simulator"))
+                .andExpect(jsonPath("$.checkoutUrl").exists())
+                .andExpect(jsonPath("$.providerReference").exists())
+                .andExpect(jsonPath("$.amount").value(7.0))
+                .andExpect(jsonPath("$.balanceDue").value(7.0))
+                .andExpect(jsonPath("$.isFullyPaid").value(false))
+                .andReturn().getResponse().getContentAsString();
+
+        // The QR payload encodes the customer checkout URL.
+        String checkoutUrl = readString(json, "$.checkoutUrl");
+        assertNotNull(checkoutUrl);
+        assertEquals(checkoutUrl, readString(json, "$.qrPayload"));
+
+        UUID paymentId = readUuid(json, "$.paymentId");
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.providerReference").exists());
+    }
+
+    @Test
+    void generatePayment_customAmountAndMethod() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator", "amount", 4.0, "method", "TRANSFER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.amount").value(4.0))
+                .andExpect(jsonPath("$.method").value("TRANSFER"))
+                .andExpect(jsonPath("$.balanceDue").value(7.0));
+    }
+
+    @Test
+    void generatePayment_unavailableProvider_failsClosed() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        // A known, enabled-but-unprovisioned provider (no secrets) must never
+        // start a checkout.
+        patch(providersBase(ctx.businessId()) + "/flutterwave/enabled?enabled=true", ctx.accessToken(), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configured").value(false));
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "flutterwave")), 400, "PROVIDER_NOT_CONFIGURED");
+    }
+
+    @Test
+    void generatePayment_unknownProvider() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "nope")), 400, "PROVIDER_UNKNOWN");
+    }
+
+    @Test
+    void generatePayment_orderAlreadyPaid_rejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/process",
+                ctx.accessToken(), Map.of("amount", 7.0, "method", "CASH"))
+                .andExpect(jsonPath("$.isFullyPaid").value(true));
+
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator")), 400, "ORDER_ALREADY_PAID");
+    }
+
+    @Test
+    void generatePayment_amountExceedsBalance_rejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        assertProblemDetail(post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator", "amount", 50.0)), 400, "PAYMENT_AMOUNT_EXCEEDS_DUE");
+    }
+
+    @Test
+    void listPayments_pendingFilterCapturesGeneratedLink() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        post(payBase(ctx.businessId()) + "/orders/" + orderId + "/generate",
+                ctx.accessToken(), Map.of("provider", "simulator"))
+                .andExpect(status().isOk());
+
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=PENDING", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.content[0].provider").value("simulator"));
+
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=COMPLETED", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    // ---------------------------------------------------------------------
+    // Webhook auto-link hardening (Phase 2)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void webhook_amountMismatch_doesNotSettle() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        String json = createPendingRedirect(ctx, orderId);
+        UUID paymentId = readUuid(json, "$.paymentId");
+        String providerReference = readString(json, "$.providerReference");
+
+        // Signed webhook but for a wildly different amount — must NOT settle.
+        simWebhook(providerReference, "succeeded", 999.0)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("received"));
+
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("PENDING"));
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=COMPLETED", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void webhook_chargeFailed_transitionsToFailed() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+        String json = createPendingRedirect(ctx, orderId);
+        UUID paymentId = readUuid(json, "$.paymentId");
+        String providerReference = readString(json, "$.providerReference");
+
+        simWebhook(providerReference, "failed", 7.0)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("received"));
+
+        get(payBase(ctx.businessId()) + "/" + paymentId, ctx.accessToken())
+                .andExpect(jsonPath("$.status").value("FAILED"));
+        // Failed funds never count toward the paid balance.
+        get(payBase(ctx.businessId()) + "?orderId=" + orderId + "&status=COMPLETED", ctx.accessToken())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    // ---------------------------------------------------------------------
+    // Unmatched funds reconciliation queue (Phase 2)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void webhook_unmatchedFund_createsReconciliationItem() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+
+        // Signed webhook for a reference we never generated (e.g. plain transfer
+        // straight into a business's BYO account) — becomes a staff item, never dropped.
+        simWebhook("ext_direct_bank_transfer_1", "succeeded", 5000.0)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("received"));
+
+        get(reconcileBase(ctx.businessId()), ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.providerReference=='ext_direct_bank_transfer_1')].provider")
+                        .value(contains("simulator")))
+                .andExpect(jsonPath("$.content[?(@.providerReference=='ext_direct_bank_transfer_1')].amount")
+                        .value(contains(5000.0)))
+                .andExpect(jsonPath("$.content[?(@.providerReference=='ext_direct_bank_transfer_1')].status")
+                        .value(contains("OPEN")));
+    }
+
+    @Test
+    void reconciliation_resolve_linksToOrder() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        UUID orderId = newOrder(ctx);
+
+        simWebhook("ext_direct_bank_transfer_2", "succeeded", 5000.0)
+                .andExpect(status().isOk());
+        String items = get(reconcileBase(ctx.businessId()), ctx.accessToken())
+                .andReturn().getResponse().getContentAsString();
+        UUID itemId = findItemId(items, "ext_direct_bank_transfer_2");
+
+        post(reconcileBase(ctx.businessId()) + "/" + itemId + "/resolve",
+                ctx.accessToken(), Map.of("orderId", orderId.toString(), "notes", "customer typed reference"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.orderId").value(orderId.toString()))
+                .andExpect(jsonPath("$.businessId").value(ctx.businessId().toString()))
+                .andExpect(jsonPath("$.notes").value("customer typed reference"));
+
+        // Resolved items are scoped to this business and vanish from the global
+        // OPEN queue. (Other tests' OPEN items may coexist — the queue is global.)
+        get(reconcileBase(ctx.businessId()) + "?status=OPEN", ctx.accessToken())
+                .andExpect(jsonPath("$.content[?(@.id=='" + itemId + "')]").isEmpty());
+        get(reconcileBase(ctx.businessId()) + "?status=RESOLVED", ctx.accessToken())
+                .andExpect(jsonPath("$.content[?(@.id=='" + itemId + "')].status").value(contains("RESOLVED")))
+                .andExpect(jsonPath("$.content[?(@.id=='" + itemId + "')].orderId").value(contains(orderId.toString())));
+    }
+
+    @Test
+    void reconciliation_resolve_unknownItem() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // BusinessException maps to 400 across the API (see ORDER_NOT_FOUND).
+        assertProblemDetail(post(reconcileBase(ctx.businessId()) + "/" + UUID.randomUUID() + "/resolve",
+                ctx.accessToken(), Map.of("orderId", UUID.randomUUID().toString())), 400, "RECONCILIATION_NOT_FOUND");
     }
 }

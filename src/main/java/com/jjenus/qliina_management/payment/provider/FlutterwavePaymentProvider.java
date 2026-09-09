@@ -170,13 +170,16 @@ public class FlutterwavePaymentProvider implements PaymentProvider {
             JsonNode data = root.path("data");
             boolean paid = "charge.completed".equals(event)
                     && "successful".equalsIgnoreCase(data.path("status").asText(""));
+            boolean failed = "charge.failed".equals(event)
+                    || ("charge.completed".equals(event)
+                    && "failed".equalsIgnoreCase(data.path("status").asText("")));
             String txnId = data.path("id").isNumber() ? String.valueOf(data.path("id").longValue()) : null;
             JsonNode amountNode = data.path("amount");
             BigDecimal amount = amountNode.isNumber() ? amountNode.decimalValue() : BigDecimal.ZERO;
-            return new WebhookEvent(amount, txnId, paid, rawPayload);
+            return new WebhookEvent(amount, txnId, paid, failed, rawPayload);
         } catch (Exception e) {
             log.error("[flutterwave] could not parse webhook payload", e);
-            return new WebhookEvent(BigDecimal.ZERO, null, false, rawPayload);
+            return new WebhookEvent(BigDecimal.ZERO, null, false, false, rawPayload);
         }
     }
 

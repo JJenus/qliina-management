@@ -180,14 +180,15 @@ public class PaystackPaymentProvider implements PaymentProvider {
             String event = root.path("event").asText("");
             JsonNode data = root.path("data");
             boolean paid = "charge.success".equals(event);
+            boolean failed = "charge.failed".equals(event);
             String reference = data.path("reference").asText(null);
             JsonNode amountNode = data.path("amount");
             BigDecimal amount = amountNode.isNumber() ? amountNode.decimalValue()
                     .divide(MINOR_UNIT, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-            return new WebhookEvent(amount, reference, paid, rawPayload);
+            return new WebhookEvent(amount, reference, paid, failed, rawPayload);
         } catch (Exception e) {
             log.error("[paystack] could not parse webhook payload", e);
-            return new WebhookEvent(BigDecimal.ZERO, null, false, rawPayload);
+            return new WebhookEvent(BigDecimal.ZERO, null, false, false, rawPayload);
         }
     }
 

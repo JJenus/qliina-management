@@ -46,6 +46,18 @@ public interface PaymentProvider {
 
     ChargeResult charge(ChargeRequest request);
 
+    /**
+     * Initiates a hosted-checkout payment for a customer-facing link/QR. The
+     * result is always redirect-style ({@code approved=false} + {@code checkoutUrl})
+     * so the customer completes the payment on the processor's own page. Defaults
+     * to {@link #charge} — the real processors' {@code charge()} is already an
+     * initialize/authorize call — while the simulator overrides it to produce a
+     * deterministic checkout link.
+     */
+    default ChargeResult initiateCheckout(ChargeRequest request) {
+        return charge(request);
+    }
+
     VerifyResult verify(String providerReference);
 
     RefundResult refund(RefundRequest request);
@@ -83,6 +95,6 @@ public interface PaymentProvider {
     }
 
     record WebhookEvent(BigDecimal amount, String providerReference,
-                        boolean chargeSucceeded, String rawPayload) {
+                        boolean chargeSucceeded, boolean chargeFailed, String rawPayload) {
     }
 }

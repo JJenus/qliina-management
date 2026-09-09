@@ -1,8 +1,15 @@
 package com.jjenus.qliina_management.payment.service;
 
 import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.customer.model.Customer;
+import com.jjenus.qliina_management.customer.repository.CustomerRepository;
+import com.jjenus.qliina_management.identity.model.User;
+import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.model.Order;
+import com.jjenus.qliina_management.order.model.OrderTimeline;
 import com.jjenus.qliina_management.order.repository.OrderRepository;
+import com.jjenus.qliina_management.payment.dto.GeneratePaymentRequest;
+import com.jjenus.qliina_management.payment.dto.GeneratePaymentResultDTO;
 import com.jjenus.qliina_management.payment.dto.PaymentProviderDTO;
 import com.jjenus.qliina_management.payment.dto.PaymentVerifyDTO;
 import com.jjenus.qliina_management.payment.model.OrderPayment;
@@ -12,6 +19,8 @@ import com.jjenus.qliina_management.payment.repository.OrderPaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -19,12 +28,14 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Orchestrates the online (provider-backed) segment of the POS checkout:
- * provider availability, charge initiation, endpoint verification, webhook
- * reconciliation and provider refunds.
+ * provider availability, charge initiation, hosted-checkout generation
+ * (payment link/QR), endpoint verification, webhook reconciliation and
+ * provider refunds.
  */
 @Slf4j
 @Service
@@ -35,9 +46,16 @@ public class PaymentProviderService {
     private final PaymentProviderConfigService configService;
     private final OrderPaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final CustomerRepository customerRepository;
+    private final UserRepository userRepository;
+    private final PaymentReconciliationService reconciliationService;
 
     @Value("${app.payments.currency:NGN}")
     private String currency;
+
+    /** A provider plus the business's resolved connection context (ready to charge). */
+    private record Connectable(PaymentProvider provider, PaymentProvider.Connection connection) {
+    }
 
     // ---------------------------------------------------------------- admin
 
@@ -77,6 +95,12 @@ public class PaymentProviderService {
      */
     public PaymentProvider.ChargeResult chargeOnline(UUID businessId, String providerName,
             BigDecimal amount, String customerEmail, String customerName, String reference) {
+        Connectable connectable = requireConnectable(businessId, providerName);
+        return connectable.provider().charge(new PaymentProvider.ChargeRequest(
+                amount, currency, customerEmail, customerName, reference, null, connectable.connection()));
+    }
+
+    private Connectable requireConnectable(UUID businessId, String providerName) {
         PaymentProvider provider = registry.require(providerName);
         String name = provider.getName();
         if (!configService.isEnabled(businessId, name)) {
@@ -93,8 +117,108 @@ public class PaymentProviderService {
             throw new BusinessException("Payment provider is not configured", "PROVIDER_NOT_CONFIGURED",
                     "provider");
         }
-        return provider.charge(new PaymentProvider.ChargeRequest(
-                amount, currency, customerEmail, customerName, reference, null, connection));
+        return new Connectable(provider, connection);
+    }
+
+    /**
+     * Starts a hosted checkout for (part of) an order's balance through a
+     * connectable provider. The result is persisted as a PENDING payment whose
+     * authorization URL the business can show as a link or QR code; settlement
+     * arrives via the provider webhook or a manual recheck.
+     */
+    @Transactional
+    public GeneratePaymentResultDTO generatePaymentLink(UUID businessId, UUID orderId,
+            GeneratePaymentRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        if (!order.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Order not found", "ORDER_NOT_FOUND");
+        }
+        Connectable connectable = requireConnectable(businessId, request.getProvider());
+        PaymentProvider provider = connectable.provider();
+
+        String method = request.getMethod() != null ? request.getMethod().trim()
+                : provider.supportedMethods().stream().findFirst().orElse("CARD");
+        if (!provider.supportedMethods().contains(method)) {
+            throw new BusinessException("Provider does not support payment method " + method,
+                    "INVALID_PAYMENT_METHOD", "method");
+        }
+
+        BigDecimal orderTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal settled = paymentRepository.sumCompletedPaymentsByOrderId(orderId);
+        BigDecimal balanceDue = settled.compareTo(orderTotal) >= 0 ? BigDecimal.ZERO : orderTotal.subtract(settled);
+
+        BigDecimal amount = request.getAmount() != null ? BigDecimal.valueOf(request.getAmount()) : balanceDue;
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0 || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("This order is already fully paid", "ORDER_ALREADY_PAID");
+        }
+        if (amount.compareTo(balanceDue) > 0) {
+            throw new BusinessException("Amount exceeds the order balance due", "PAYMENT_AMOUNT_EXCEEDS_DUE",
+                    "amount");
+        }
+
+        String reference = "ql_" + UUID.randomUUID();
+        Customer customer = order.getCustomerId() != null
+                ? customerRepository.findById(order.getCustomerId()).orElse(null) : null;
+        String customerEmail = customer != null ? customer.getEmail() : null;
+        String customerName = customer != null
+                ? (customer.getFirstName() + " " + (customer.getLastName() != null
+                        ? customer.getLastName() : "")).trim()
+                : null;
+
+        PaymentProvider.ChargeResult result = provider.initiateCheckout(new PaymentProvider.ChargeRequest(
+                amount, currency, customerEmail, customerName, reference,
+                "Order " + (order.getOrderNumber() != null ? order.getOrderNumber() : ""),
+                connectable.connection()));
+        if (!StringUtils.hasText(result.checkoutUrl())) {
+            throw new BusinessException("Provider could not start a checkout: " + result.message(),
+                    "PROVIDER_CHECKOUT_FAILED", "provider");
+        }
+
+        OrderPayment payment = new OrderPayment();
+        payment.setBusinessId(businessId);
+        payment.setShopId(order.getShopId());
+        payment.setOrderId(orderId);
+        payment.setCustomerId(order.getCustomerId());
+        payment.setAmount(amount);
+        payment.setMethod(method);
+        payment.setReference(reference);
+        payment.setProvider(provider.getName());
+        payment.setProviderReference(result.providerReference());
+        payment.setProviderStatus("PENDING");
+        payment.setStatus("PENDING");
+        payment.setPaidAt(LocalDateTime.now());
+        payment.setCollectedBy(getCurrentUserId());
+        payment.setMetadata(Map.of("checkoutUrl", result.checkoutUrl()));
+        payment = paymentRepository.save(payment);
+
+        OrderTimeline timeline = new OrderTimeline();
+        timeline.setOrder(order);
+        timeline.setType("PAYMENT");
+        timeline.setDescription(String.format("Payment request of %s %s initiated for authorization (checkout link)",
+                payment.getAmount(), payment.getMethod()));
+        timeline.setTimestamp(LocalDateTime.now());
+        timeline.setUserId(payment.getCollectedBy());
+        timeline.setUserName(getUserName(payment.getCollectedBy()));
+        order.getTimeline().add(timeline);
+        orderRepository.save(order);
+
+        String checkoutUrl = result.checkoutUrl();
+        return GeneratePaymentResultDTO.builder()
+                .paymentId(payment.getId())
+                .orderId(orderId)
+                .orderNumber(order.getOrderNumber())
+                .amount(amount)
+                .method(method)
+                .reference(reference)
+                .provider(payment.getProvider())
+                .providerReference(payment.getProviderReference())
+                .status("PENDING")
+                .checkoutUrl(checkoutUrl)
+                .qrPayload(checkoutUrl)
+                .balanceDue(balanceDue)
+                .isFullyPaid(false)
+                .build();
     }
 
     // ---------------------------------------------------------- settlement
@@ -132,9 +256,21 @@ public class PaymentProviderService {
                 .build();
     }
 
-    /** Reconciles a subscription webhook: marks settled provider charges completed. */
+    /**
+     * Reconciles a provider webhook. Signature is verified first, then the event
+     * is matched to a pending payment by provider + provider reference:
+     * <ul>
+     *   <li>settled + amount matches → mark COMPLETED (auto-link);</li>
+     *   <li>settled + amount mismatch → never settle — the payment stays PENDING
+     *       with providerStatus {@code AMOUNT_MISMATCH} for staff review;</li>
+     *   <li>{@code charge.failed} → mark the pending payment FAILED;</li>
+     *   <li>settled + no matching payment → enqueue an unmatched-funds item for
+     *       staff reconciliation (the webhook carries no business identifier, so
+     *       the money cannot be auto-attributed).</li>
+     * </ul>
+     */
     @Transactional
-    public void processWebhook(String providerName, String rawPayload, java.util.Map<String, String> headers) {
+    public void processWebhook(String providerName, String rawPayload, Map<String, String> headers) {
         PaymentProvider provider = registry.require(providerName);
         if (!provider.verifyWebhookSignature(rawPayload, headers)) {
             throw new BusinessException("Invalid payment webhook signature", "INVALID_WEBHOOK_SIGNATURE");
@@ -145,11 +281,38 @@ public class PaymentProviderService {
         }
 
         paymentRepository.findByProviderAndProviderReference(provider.getName(), event.providerReference())
-                .ifPresent(payment -> {
-                    if (event.chargeSucceeded() && !"COMPLETED".equals(payment.getStatus())) {
-                        settlePayment(payment, "SUCCESS");
-                    }
-                });
+                .ifPresentOrElse(
+                        payment -> reconcile(payment, event),
+                        () -> {
+                            if (event.chargeSucceeded()) {
+                                reconciliationService.recordUnmatched(provider.getName(), event);
+                            }
+                        });
+    }
+
+    private void reconcile(OrderPayment payment, PaymentProvider.WebhookEvent event) {
+        if (event.chargeFailed() && !"COMPLETED".equals(payment.getStatus())) {
+            if (!"FAILED".equals(payment.getStatus())) {
+                payment.setStatus("FAILED");
+                payment.setProviderStatus("FAILED");
+                paymentRepository.save(payment);
+                log.warn("Provider charge failed payment={} order={}", payment.getId(), payment.getOrderId());
+            }
+            return;
+        }
+        if (!event.chargeSucceeded() || "COMPLETED".equals(payment.getStatus())) {
+            return;
+        }
+        boolean amountMatches = event.amount() == null || event.amount().compareTo(BigDecimal.ZERO) <= 0
+                || event.amount().compareTo(payment.getAmount()) == 0;
+        if (!amountMatches) {
+            payment.setProviderStatus("AMOUNT_MISMATCH");
+            paymentRepository.save(payment);
+            log.warn("Webhook amount {} does not match pending payment {} (={}) — not settling",
+                    event.amount(), payment.getId(), payment.getAmount());
+            return;
+        }
+        settlePayment(payment, "SUCCESS");
     }
 
     /** Routes a refund for a provider-backed payment (used by the refund flow). */
@@ -180,5 +343,23 @@ public class PaymentProviderService {
         order.setBalanceDue(totalPaid.compareTo(orderTotal) >= 0 ? BigDecimal.ZERO : orderTotal.subtract(totalPaid));
         orderRepository.save(order);
         log.info("Provider charge settled payment={} order={}", payment.getId(), order.getId());
+    }
+
+    private UUID getCurrentUserId() {
+        try {
+            UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            return userRepository.findByUsername(userDetails.getUsername())
+                    .map(User::getId)
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String getUserName(UUID userId) {
+        if (userId == null) return "System";
+        return userRepository.findById(userId)
+                .map(u -> u.getFirstName() + " " + u.getLastName())
+                .orElse("User " + userId.toString().substring(0, 8));
     }
 }

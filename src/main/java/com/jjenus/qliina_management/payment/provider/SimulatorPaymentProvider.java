@@ -100,6 +100,22 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     }
 
     @Override
+    public ChargeResult initiateCheckout(ChargeRequest request) {
+        String txnId = "sim_" + UUID.randomUUID();
+        if (!isConfigured() || failAll || forceFailure) {
+            String raw = jsonResponse(txnId, "failed", request.amount(), "declined");
+            log.info("[sim] checkout DECLINED amount={} ref={}", request.amount(), request.reference());
+            return new ChargeResult(false, txnId, null, BigDecimal.ZERO, "DECLINED", raw,
+                    "Simulated decline");
+        }
+        String checkoutUrl = "https://sandbox.simulator.local/checkout/" + txnId;
+        String raw = jsonResponse(txnId, "pending", request.amount(), "pending");
+        log.info("[sim] checkout PENDING url={} ref={}", checkoutUrl, request.reference());
+        return new ChargeResult(false, txnId, checkoutUrl, BigDecimal.ZERO, "PENDING", raw,
+                "Awaiting customer authorization");
+    }
+
+    @Override
     public VerifyResult verify(String providerReference) {
         boolean paid = providerReference != null && !providerReference.startsWith("sim_declined");
         return new VerifyResult(paid, providerReference,
@@ -116,9 +132,10 @@ public class SimulatorPaymentProvider implements PaymentProvider {
     @Override
     public WebhookEvent parseWebhook(String rawPayload, Map<String, String> headers) {
         boolean paid = rawPayload.contains("charge.succeeded");
+        boolean failed = rawPayload.contains("charge.failed");
         String txn = extract(rawPayload, "\"txn\":\"");
         BigDecimal amount = extractAmount(rawPayload);
-        return new WebhookEvent(amount, txn, paid, rawPayload);
+        return new WebhookEvent(amount, txn, paid, failed, rawPayload);
     }
 
     @Override
