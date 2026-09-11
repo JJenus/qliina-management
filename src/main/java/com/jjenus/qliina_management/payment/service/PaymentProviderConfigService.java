@@ -27,8 +27,10 @@ import java.util.UUID;
  *
  * <p>A provider is checkout-eligible ({@code available}) when it is enabled and
  * connectable: {@code PLATFORM} mode requires the platform to be configured,
- * {@code BYO} mode requires business credentials (encrypted at rest). Manual
- * POS recording of CARD/TRANSFER never depends on any provider being available.
+ * {@code BYO} mode requires business credentials (encrypted at rest). Providers
+ * disabled at the platform level ({@link PlatformPaymentProviderService}) are
+ * hidden from this list and fail closed everywhere. Manual POS recording of
+ * CARD/TRANSFER never depends on any provider being available.
  */
 @Slf4j
 @Service
@@ -45,10 +47,24 @@ public class PaymentProviderConfigService {
     private final PaymentProviderRegistry registry;
     private final PaymentProviderConfigRepository repository;
     private final EncryptionService encryptionService;
+    private final PlatformPaymentProviderService platformService;
+
+    /**
+     * Platform toggle guards: a provider disabled at the platform level is hidden
+     * from business gateway screens, treated as disabled at checkout, and rejected
+     * on any business-level connect attempt (fail closed).
+     */
+    private void requirePlatformEnabled(PaymentProvider provider) {
+        if (!platformService.isPlatformEnabled(provider.getName())) {
+            throw new BusinessException(provider.getDisplayName() + " is not available on this platform",
+                    "PROVIDER_UNAVAILABLE", "provider");
+        }
+    }
 
     @Transactional
     public void setEnabled(UUID businessId, String providerName, boolean enabled) {
         PaymentProvider provider = registry.require(providerName);
+        requirePlatformEnabled(provider);
         PaymentProviderConfig config = findOrDefault(businessId, provider);
         config.setEnabled(enabled);
         repository.save(config);
@@ -59,6 +75,7 @@ public class PaymentProviderConfigService {
     public PaymentProviderConfig setProviderConnection(UUID businessId, String providerName,
             UpdateProviderConnectionRequest request) {
         PaymentProvider provider = registry.require(providerName);
+        requirePlatformEnabled(provider);
         ProviderConnectionMode mode;
         try {
             mode = ProviderConnectionMode.valueOf(StringUtils.hasText(request.getMode())
@@ -135,6 +152,9 @@ public class PaymentProviderConfigService {
 
     @Transactional(readOnly = true)
     public boolean isEnabled(UUID businessId, String providerName) {
+        if (!platformService.isPlatformEnabled(providerName)) {
+            return false;
+        }
         return repository.findByBusinessIdAndProvider(businessId, providerName)
                 .map(PaymentProviderConfig::isEnabled)
                 .orElseGet(() -> DEFAULT_ENABLED.getOrDefault(providerName, false));
@@ -146,7 +166,11 @@ public class PaymentProviderConfigService {
         repository.findByBusinessId(businessId)
                 .forEach(c -> overrides.put(c.getProvider(), c));
 
+        // Batch the platform availability lookup: one query instead of one per provider.
+        Map<String, Boolean> platformEnabled = platformService.platformEnabledMap();
+
         return registry.all().stream()
+                .filter(provider -> platformEnabled.getOrDefault(provider.getName(), true))
                 .sorted(Comparator.comparing(PaymentProvider::getName))
                 .map(provider -> toDto(provider, overrides.get(provider.getName())))
                 .toList();

@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Seeds the system roles (SUPER_ADMIN, BUSINESS_ADMIN, SHOP_MANAGER, workers,
@@ -149,7 +150,8 @@ public class RoleSeeder implements CommandLineRunner {
         roleIfAbsent("PLATFORM_ADMIN", "Platform admin — manages all businesses and plans", Role.RoleType.PLATFORM, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
                      "platform.businesses.view", "platform.businesses.manage",
-                     "platform.plans.manage", "platform.billing.manage", "platform.audit.view"
+                     "platform.plans.manage", "platform.billing.manage", "platform.audit.view",
+                     "platform.payments.manage"
              ))));
 
         // SUPPORT_AGENT - operational view with masked PII, read-only
@@ -192,10 +194,22 @@ public class RoleSeeder implements CommandLineRunner {
      * expanded admin permission set existed (createRoles() only runs once).
      */
     private void ensurePlatformRolePermissions() {
+        // SUPER_ADMIN is created with "all permissions at that time"; new permissions
+        // added later must be topped up here too (createRoles() only runs once).
+        roleRepository.findByName("SUPER_ADMIN").ifPresent(role -> {
+            Set<String> have = role.getPermissions().stream()
+                    .map(Permission::getName).collect(Collectors.toSet());
+            permissionRepository.findAll().forEach(p -> {
+                if (have.add(p.getName())) role.getPermissions().add(p);
+            });
+            roleRepository.save(role);
+        });
+
         // PLATFORM_ADMIN — full day-to-day platform operations
         grantIfMissing("PLATFORM_ADMIN", "platform.stats.view");
         grantIfMissing("PLATFORM_ADMIN", "platform.users.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.settings.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.payments.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.notifications.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.impersonate");
         grantIfMissing("PLATFORM_ADMIN", "platform.coupons.manage");

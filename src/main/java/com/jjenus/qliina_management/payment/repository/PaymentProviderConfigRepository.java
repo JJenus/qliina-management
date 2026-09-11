@@ -12,4 +12,6 @@ public interface PaymentProviderConfigRepository extends JpaRepository<PaymentPr
     Optional<PaymentProviderConfig> findByBusinessIdAndProvider(UUID businessId, String provider);
 
     List<PaymentProviderConfig> findByBusinessId(UUID businessId);
+
+    long countByProviderAndEnabled(String provider, boolean enabled);
 }

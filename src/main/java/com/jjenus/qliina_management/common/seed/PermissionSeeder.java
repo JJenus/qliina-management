@@ -111,6 +111,7 @@ public class PermissionSeeder implements CommandLineRunner {
         perm("platform.stats.view",        "View Platform Stats",       "View cross-tenant platform statistics",  "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.users.manage",      "Manage Platform Users",     "Manage platform staff accounts",         "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.settings.manage",   "Manage System Settings",    "Manage platform settings and feature flags", "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.payments.manage",   "Manage Payment Providers",  "Control which payment providers businesses can connect", "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.notifications.manage", "Manage Platform Notifications", "Send broadcasts and manage system templates", "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.impersonate",       "Impersonate Tenant Users",  "Login as a tenant user for support",     "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.audit.export",      "Export Audit Logs",         "Export audit logs for compliance",       "PLATFORM_ADMIN", "GLOBAL", false);

@@ -124,6 +124,38 @@ config. (Archived previous checklist: `archive/PRODUCTION_READINESS.md`.)
 
 > Full `./mvnw test` green (585).
 
+## ✅ Phase 4 — Platform payment-provider control (admin availability)
+
+- [x] **Platform toggle** — `PlatformPaymentProviderConfig` (lazy rows; **no row =
+      enabled**, preserving prior behavior) + `GET /api/v1/admin/payment-providers`
+      and `PATCH .../{provider}/availability?platformEnabled=` (`platform.payments.manage`;
+      catalog GET also `platform.businesses.view`). Materializes on first toggle,
+      records `updated_by_username` + `updated_at` for the audit trail.
+- [x] **Fail-closed everywhere** — a platform-disabled provider is hidden from
+      business gateway lists, its business config rows are treated as `enabled=false`
+      (checkout → `PROVIDER_DISABLED`), and business connect/enable is rejected with
+      `PROVIDER_UNAVAILABLE`. In-flight authorizations keep verifying/refunding and
+      reconciling through webhooks — a toggle never strands money already initiated.
+- [x] **Permission wiring** — `platform.payments.manage` added to PermissionSeeder
+      and granted to PLATFORM_ADMIN + SUPER_ADMIN. `RoleSeeder.ensurePlatformRolePermissions()`
+      tops up SUPER_ADMIN with **all** current permissions each boot (the live admin's JWT
+      was missing the new permission because SUPER_ADMIN's set is a role-creation snapshot).
+- [x] **Toggle race (`PROVIDER_UPDATE_CONFLICT`)** — `setPlatformEnabled` runs each
+      attempt in a fresh REQUIRES_NEW transaction: a concurrent-toggle collision
+      (unique-constraint on a not-yet-created row, or `@Version` bump) rolls back the
+      loser cleanly and is retried (3 attempts) against the winner's row; exhaustion
+      returns 409 instead of 500. `saveAndFlush` surfaces the constraint inside the attempt.
+- [x] **Tests** — `AdminPaymentProviderIntegrationTest` (7): catalog shape, admin authz
+      (read OR `/scale`, patch requires manage), toggle round-trip + persistence across
+      boots, unknown provider → `PROVIDER_UNKNOWN`, business list filtered when disabled +
+      restored when re-enabled, business connect rejected while disabled, in-flight
+      authorization still settles after disable. Payment suite untouched → 53/53 combined.
+
+> **Known follow-ups:** structured audit event for platform toggles (currently
+> `log.info` + `updated_by_username` only); surface backend `errorCode` in the admin
+> toasts on the frontend. `db/baseline.sql` needs regenerating on the next greenfield
+> prod bootstrap (new `platform_payment_provider_configs` table).
+
 ## Verify
 
 ```sh

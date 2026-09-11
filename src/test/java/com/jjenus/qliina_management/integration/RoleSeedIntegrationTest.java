@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RoleSeedIntegrationTest extends BaseIntegrationTest {
 
     /** Total number of permissions defined by the seed (source of truth). */
-    private static final int TOTAL_PERMISSIONS = 53;
+    private static final int TOTAL_PERMISSIONS = 54;
 
     @Autowired
     private RoleRepository roleRepository;
@@ -134,7 +134,8 @@ class RoleSeedIntegrationTest extends BaseIntegrationTest {
                         // ensurePlatformRolePermissions top-up
                         "platform.stats.view", "platform.users.manage",
                         "platform.settings.manage", "platform.notifications.manage",
-                        "platform.impersonate", "platform.coupons.manage")),
+                        "platform.impersonate", "platform.coupons.manage",
+                        "platform.payments.manage")),
                 Map.entry("SUPPORT_AGENT", set(
                         "platform.businesses.view", "platform.support.view",
                         "platform.stats.view")),
