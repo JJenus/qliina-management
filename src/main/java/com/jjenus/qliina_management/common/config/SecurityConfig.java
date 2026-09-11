@@ -2,6 +2,7 @@ package com.jjenus.qliina_management.common.config;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +25,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -43,22 +46,53 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final CustomPermissionEvaluator permissionEvaluator;
 
+    /**
+     * Comma-separated list of origins allowed to call the API with credentials.
+     * Empty (the default) means same-origin only — cross-origin calls are denied.
+     * Dev/E2E profiles set http://localhost:3000 etc.; prod must provide
+     * CORS_ALLOWED_ORIGINS (never {@code *}).
+     */
+    @Value("${app.cors.allowed-origins:}")
+    private String allowedOrigins;
+
+    /**
+     * When true, Swagger UI / OpenAPI docs and the H2 console are reachable
+     * without authentication (dev/test convenience only — false everywhere else).
+     */
+    @Value("${app.security.permit-api-docs:false}")
+    private boolean permitApiDocs;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers("/api/v1/public/**").permitAll()
-                .requestMatchers("/api/v1/webhooks/**").permitAll()
-                .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers("/ws/**", "/ws").permitAll()
-                .requestMatchers("/api/v1/ws-docs/**").permitAll()
-                .anyRequest().authenticated()
-            )
+            // Defense-in-depth: even before the stateless JWT checks, ship
+            // restrictive response headers so a stray XSS/client bug is blunted.
+            .headers(headers -> headers
+                .contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"))
+                .frameOptions(frameOptions -> frameOptions.deny())
+                .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
+            .authorizeHttpRequests(auth -> {
+                auth.requestMatchers("/api/v1/auth/**").permitAll()
+                    .requestMatchers("/api/v1/public/**").permitAll()
+                    .requestMatchers("/api/v1/webhooks/**").permitAll()
+                    .requestMatchers("/ws/**", "/ws").permitAll()
+                    .requestMatchers("/api/v1/ws-docs/**").permitAll()
+                    .requestMatchers("/actuator/health").permitAll();
+                // Dev/test only: Swagger UI + OpenAPI + H2 console are open in
+                // profiles that explicitly permit them; closed (denyAll) everywhere else.
+                if (permitApiDocs) {
+                    auth.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/h2-console/**")
+                            .permitAll();
+                } else {
+                    auth.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/h2-console/**")
+                            .denyAll();
+                }
+                auth.anyRequest().authenticated();
+            })
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
@@ -104,9 +138,14 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOriginPatterns(List.of("*")); // use setAllowedOrigins for prod
+        // Exact origins only — never "*" together with credentials. Empty list
+        // (prod default) = same-origin only; browsers reject any cross-origin
+        // credentialed call, which is the correct fail-closed posture.
+        List<String> origins = StringUtils.hasText(allowedOrigins)
+                ? List.of(allowedOrigins.split("\\s*,\\s*")) : List.of();
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Origin", "Accept"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true); // required for browsers to read Authorization response header
 

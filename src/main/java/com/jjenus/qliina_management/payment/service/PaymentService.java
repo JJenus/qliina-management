@@ -6,6 +6,7 @@ import com.jjenus.qliina_management.customer.dto.CustomerSummaryDTO;
 import com.jjenus.qliina_management.customer.model.Customer;
 import com.jjenus.qliina_management.customer.repository.CustomerRepository;
 import com.jjenus.qliina_management.business.repository.ShopRepository;
+import com.jjenus.qliina_management.business.model.Shop;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.order.dto.OrderSummaryDTO;
 import com.jjenus.qliina_management.order.model.Order;
@@ -82,16 +83,22 @@ public class PaymentService {
     }
     
     @Transactional(readOnly = true)
-    public PaymentDetailDTO getPayment(UUID paymentId) {
+    public PaymentDetailDTO getPayment(UUID businessId, UUID paymentId) {
         OrderPayment payment = paymentRepository.findById(paymentId)
             .orElseThrow(() -> new BusinessException("Payment not found", "PAYMENT_NOT_FOUND"));
+        if (!payment.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Payment not found", "PAYMENT_NOT_FOUND");
+        }
         return mapToPaymentDetailDTO(payment);
     }
     
     @Transactional
     public PaymentResultDTO processPayment(UUID businessId, UUID orderId, ProcessPaymentRequest request) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
             .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
+        if (!order.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Order not found", "ORDER_NOT_FOUND");
+        }
         
         // Validate payment method
         PaymentMethod method = paymentMethodRepository.findByBusinessIdAndType(businessId, request.getMethod())
@@ -313,6 +320,9 @@ public class PaymentService {
     public RefundResultDTO processRefund(UUID businessId, UUID paymentId, RefundRequest request) {
         OrderPayment originalPayment = paymentRepository.findById(paymentId)
             .orElseThrow(() -> new BusinessException("Payment not found", "PAYMENT_NOT_FOUND"));
+        if (!originalPayment.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Payment not found", "PAYMENT_NOT_FOUND");
+        }
         
         BigDecimal refundAmount = BigDecimal.valueOf(request.getAmount());
         if (originalPayment.getAmount().compareTo(refundAmount) < 0) {
@@ -361,8 +371,9 @@ public class PaymentService {
         }
         paymentRepository.save(originalPayment);
         
-        // Update order balance
-        Order order = orderRepository.findById(originalPayment.getOrderId()).orElseThrow();
+        // Update order balance (recomputed under the order row lock so a
+        // concurrent payment/refund cannot leave a stale paid amount).
+        Order order = orderRepository.findByIdForUpdate(originalPayment.getOrderId()).orElseThrow();
         BigDecimal totalPaid = paymentRepository.sumPaymentsByOrderId(order.getId());
         order.setPaidAmount(totalPaid);
         order.setBalanceDue(order.getTotalAmount().subtract(totalPaid));
@@ -420,6 +431,9 @@ public class PaymentService {
         if (existingOpen.isPresent()) {
             throw new BusinessException("Cash drawer already open for this shop", "DRAWER_ALREADY_OPEN");
         }
+        Shop shop = shopRepository.findById(request.getShopId())
+            .filter(s -> s.getBusinessId().equals(businessId))
+            .orElseThrow(() -> new BusinessException("Shop not found", "SHOP_NOT_FOUND"));
         
         CashDrawerSession session = new CashDrawerSession();
         session.setBusinessId(businessId);
@@ -439,6 +453,9 @@ public class PaymentService {
     public CashDrawerSessionDTO closeCashDrawer(UUID businessId, CloseDrawerRequest request) {
         CashDrawerSession session = cashDrawerRepository.findById(request.getSessionId())
             .orElseThrow(() -> new BusinessException("Session not found", "SESSION_NOT_FOUND"));
+        if (!session.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Session not found", "SESSION_NOT_FOUND");
+        }
         
         if (!"OPEN".equals(session.getStatus())) {
             throw new BusinessException("Session is not open", "SESSION_NOT_OPEN");
@@ -540,9 +557,12 @@ public class PaymentService {
     }
     
     @Transactional(readOnly = true)
-    public CorporateAccountDTO getCorporateAccount(UUID accountId) {
+    public CorporateAccountDTO getCorporateAccount(UUID businessId, UUID accountId) {
         CorporateAccount account = corporateAccountRepository.findById(accountId)
             .orElseThrow(() -> new BusinessException("Account not found", "ACCOUNT_NOT_FOUND"));
+        if (!account.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Account not found", "ACCOUNT_NOT_FOUND");
+        }
         return mapToCorporateAccountDTO(account);
     }
     
@@ -550,6 +570,9 @@ public class PaymentService {
     public InvoiceDTO generateInvoice(UUID businessId, UUID accountId, GenerateInvoiceRequest request) {
         CorporateAccount account = corporateAccountRepository.findById(accountId)
             .orElseThrow(() -> new BusinessException("Account not found", "ACCOUNT_NOT_FOUND"));
+        if (!account.getBusinessId().equals(businessId)) {
+            throw new BusinessException("Account not found", "ACCOUNT_NOT_FOUND");
+        }
         
         // Get orders to invoice
         List<Order> orders;

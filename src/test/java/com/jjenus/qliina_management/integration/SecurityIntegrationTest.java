@@ -1,5 +1,6 @@
 package com.jjenus.qliina_management.integration;
 
+import com.jjenus.qliina_management.business.service.ServiceCatalogService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -9,9 +10,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,6 +29,9 @@ class SecurityIntegrationTest extends BaseIntegrationTest {
     @Autowired
     @Value("${jwt.secret}")
     private String jwtSecret;
+
+    @Autowired
+    private ServiceCatalogService catalogService;
 
     // ---------------------------------------------------------------------
     // Unauthenticated access
@@ -179,5 +186,97 @@ class SecurityIntegrationTest extends BaseIntegrationTest {
                 admin, Map.of("status", "TRIAL"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("TRIAL"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Cross-tenant IDOR on payment resources (remediation C3)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void tenantA_cannotReadTenantB_Payment() throws Exception {
+        AuthContext a = registerBusinessAndOwner();
+        AuthContext b = registerBusinessAndOwner();
+        UUID paymentId = createPaymentFor(b);
+        // Tenant A must not read tenant B's payment detail via B's business id.
+        assertProblemDetail(get("/api/v1/" + b.businessId() + "/payments/" + paymentId, a.accessToken()),
+                403, "ACCESS_DENIED");
+    }
+
+    // ---------------------------------------------------------------------
+    // Security headers + CORS (remediation C4 / C5)
+    // ---------------------------------------------------------------------
+
+    @Test
+    void protectedResponse_shipsSecurityHeaders() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        get("/api/v1/users/me", ctx.accessToken())
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Security-Policy",
+                        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"))
+                .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
+    }
+
+    @Test
+    void cors_disallowedOrigin_isRejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // Evil.com is not in app.cors.allowed-origins — the credentialed
+        // request must be rejected, not silently proxied.
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + ctx.accessToken())
+                        .header("Origin", "https://evil.example.com"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cors_allowedOrigin_roundTrips() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // localhost:3000 IS in app.cors.allowed-origins (test profile).
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + ctx.accessToken())
+                        .header("Origin", "http://localhost:3000"))
+                .andExpect(status().isOk());
+    }
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+
+    /** Creates a provider payment in tenant's business and returns its id. */
+    private UUID createPaymentFor(AuthContext ctx) throws Exception {
+        // Simplest deterministic money path: create a customer + order, then
+        // process a manual CASH payment with no provider (COMPLETED immediately).
+        String phone = "+1" + (555_900_0000L + counter.incrementAndGet());
+        Map<String, Object> custBody = Map.of(
+                "firstName", "Cross", "lastName", "Tenant", "phone", phone);
+        String custJson = post("/api/v1/" + ctx.businessId() + "/customers", ctx.accessToken(), custBody)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID customerId = readUuid(custJson, "$.id");
+
+        UUID serviceTypeId = catalogService.getActiveServices(ctx.businessId()).get(0).getId();
+        UUID garmentTypeId = catalogService.getActiveGarments(ctx.businessId()).get(0).getId();
+        Map<String, Object> orderBody = Map.of(
+                "customerId", customerId.toString(),
+                "shopId", ctx.shopId().toString(),
+                "items", List.of(Map.of(
+                        "serviceTypeId", serviceTypeId.toString(),
+                        "garmentTypeId", garmentTypeId.toString(),
+                        "quantity", 2,
+                        "unitPrice", 3.50,
+                        "description", "Two shirts")));
+        String orderJson = post("/api/v1/" + ctx.businessId() + "/orders", ctx.accessToken(), orderBody)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID orderId = readUuid(orderJson, "$.id");
+
+        String payJson = post("/api/v1/" + ctx.businessId() + "/payments/orders/" + orderId + "/process",
+                        ctx.accessToken(), Map.of("amount", 7.0, "method", "CASH"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return readUuid(payJson, "$.paymentId");
     }
 }

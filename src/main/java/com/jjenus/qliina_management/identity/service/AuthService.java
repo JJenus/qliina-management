@@ -213,7 +213,7 @@ public class AuthService {
             rt.setUser(user); rt.setTokenHash(hashToken(token));
             rt.setExpiresAt(LocalDateTime.now().plusHours(1));
             passwordResetTokenRepository.save(rt);
-            log.info("Password reset token for user {}: {}", user.getUsername(), token);
+            log.info("Password reset token issued for user {}", user.getUsername());
         });
     }
 

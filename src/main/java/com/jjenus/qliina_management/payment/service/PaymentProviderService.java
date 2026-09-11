@@ -135,7 +135,7 @@ public class PaymentProviderService {
     @Transactional
     public GeneratePaymentResultDTO generatePaymentLink(UUID businessId, UUID orderId,
             GeneratePaymentRequest request) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new BusinessException("Order not found", "ORDER_NOT_FOUND"));
         if (!order.getBusinessId().equals(businessId)) {
             throw new BusinessException("Order not found", "ORDER_NOT_FOUND");
@@ -431,7 +431,7 @@ public class PaymentProviderService {
         payment.setPaidAt(LocalDateTime.now());
         paymentRepository.save(payment);
 
-        Order order = orderRepository.findById(payment.getOrderId()).orElse(null);
+        Order order = orderRepository.findByIdForUpdate(payment.getOrderId()).orElse(null);
         if (order == null) {
             return;
         }

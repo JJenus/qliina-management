@@ -29,13 +29,19 @@ spring:
 server:
   port: 8080
   error:
-    include-message: always
-    include-binding-errors: always
+    # Full messages are only surfaced in dev/test profiles (which opt in); the
+    # default here is fail-closed so no environment accidentally leaks internal
+    # (e.g. SQL/validation) messages to clients. Callers rely on errorCode.
+    include-message: never
+    include-binding-errors: never
     include-stacktrace: never
     include-exception: false
 
 jwt:
-  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  # No default — must come from the environment (JWT_SECRET) in any environment
+  # beyond local dev/test (which set their own explicit value in profile YAMLs).
+  # A committed/tutorial fallback would let tokens be forged.
+  secret: ${JWT_SECRET}
   expiration: 86400000 # 24 hours in milliseconds
   refresh-expiration: 604800000 # 7 days in milliseconds
 
@@ -43,12 +49,16 @@ jwt:
 app:
   seed-data:
     admin:
-      enabled: ${SEED_ADMIN_ENABLED:true}
-      password: ${SEED_ADMIN_PASSWORD:Admin@123}
+      # Admin bootstrap is OFF by default. Enabling it in dev/test (profile YAML)
+      # or via SEED_ADMIN_ENABLED for a one-time prod bootstrap keeps the known
+      # default password out of every non-prod environment.
+      enabled: ${SEED_ADMIN_ENABLED:false}
+      password: ${SEED_ADMIN_PASSWORD:}
   billing:
     gateway:
       simulator:
-        secret: ${BILLING_GATEWAY_SECRET:sim-secret}
+        # No committed default — the dev/test profiles pin the simulator secret.
+        secret: ${BILLING_GATEWAY_SECRET}
     simulator:
       failure-mode: ${BILLING_SIMULATOR_FAILURE_MODE:NONE} # NONE | ALL (tests inject programmatically)
     schedule:
@@ -86,7 +96,8 @@ app:
     providers:
       simulator:
         enabled: ${PAYMENTS_SIMULATOR_ENABLED:true} # false in prod (sandbox never live)
-        secret: ${PAYMENTS_SIMULATOR_SECRET:sim-secret}
+        # Dev/test profile pins the simulator secret; prod provides its own.
+        secret: ${PAYMENTS_SIMULATOR_SECRET}
         failure-mode: ${PAYMENTS_SIMULATOR_FAILURE_MODE:NONE} # NONE | ALL (tests inject programmatically)
       paystack:
         secret-key: ${PAYSTACK_SECRET_KEY:}
@@ -97,9 +108,12 @@ app:
         webhook-secret: ${FLUTTERWAVE_WEBHOOK_SECRET:}
 
 # Encryption Configuration
+# No committed key/salt — must come from the environment (or explicit profile
+# YAMLs for dev/test). A static checked-in key would let anyone decrypt the
+# BYO payment-provider credentials stored at rest.
 encryption:
-  secret: ${ENCRYPTION_SECRET:tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=}
-  salt: ${ENCRYPTION_SALT:f14ecc5ca42ba522a1f5a38df1564282}
+  secret: ${ENCRYPTION_SECRET}
+  salt: ${ENCRYPTION_SALT}
   iteration-count: 65536
   key-length: 256
   enabled: true
@@ -117,10 +131,15 @@ management:
   endpoints:
     web:
       exposure:
+        # Publicly reachable: /actuator/health only (already permitAll in
+        # SecurityConfig); metrics/prometheus are exposed but require auth
+        # (not permitAll).  Dev/test may widen this via profile YAML.
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      # Leaks datasource/disk state when 'always'; use 'never' as the baseline
+      # and only widen in dev/test profiles where operators need it.
+      show-details: never
 
 springdoc:
   swagger-ui:

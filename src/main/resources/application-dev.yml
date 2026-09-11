@@ -11,8 +11,25 @@ spring:
 
 # Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
 app:
+  cors:
+    # The local Nuxt dev server (http://localhost:3000) hits this API cross-origin.
+    allowed-origins: http://localhost:3000,http://127.0.0.1:3000
+  security:
+    permit-api-docs: true
   seed-demo:
     enabled: true
+  seed-data:
+    admin:
+      enabled: true
+      password: Admin@123
+  billing:
+    gateway:
+      simulator:
+        secret: dev-billing-simulator-secret
+  payments:
+    providers:
+      simulator:
+        secret: dev-payment-simulator-secret
 
 logging:
   level:
@@ -25,9 +42,13 @@ server:
   port: 8080
   
 # Encryption Configuration
+# Known values for local dev only; never ship to prod.
+jwt:
+  secret: dev-only-jwt-secret-not-for-production-1234567890ABCDEF
+
 encryption:
-  secret: ${ENCRYPTION_SECRET:tWHKe8dL9FTumZynTVF8UDYruDUiODdOh0WWLt7fY0I=}
-  salt: ${ENCRYPTION_SALT:f14ecc5ca42ba522a1f5a38df1564282}
+  secret: ${ENCRYPTION_SECRET:dev-encryption-secret}
+  salt: ${ENCRYPTION_SALT:dev-encryption-salt-abcdef0123456789}
   iteration-count: 65536
   key-length: 256
   enabled: true

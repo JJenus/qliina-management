@@ -15,6 +15,14 @@ spring:
 # Seed the demo tenant ("Qliina Demo Laundry") with all roles, orders, etc.
 # Integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false).
 app:
+  cors:
+    # The PWA dev server (http://localhost:3000) hits this API cross-origin in
+    # E2E. Exact origins only — never "*" with credentials.
+    allowed-origins: http://localhost:3000,http://127.0.0.1:3000
+  security:
+    # Swagger UI + H2 console are open in the test profile (H2 console is
+    # only enabled here; Swagger is harmless when the console is off).
+    permit-api-docs: true
   rate-limit:
     # Generous budgets so the shared integration-test contexts (one shared
     # 127.0.0.1 client IP) never trip. The dedicated 429 test overrides these
@@ -25,6 +33,11 @@ app:
     login:
       capacity: 10000
       refill-per-minute: 5000
+  seed-data:
+    # Admin bootstrap is ON in the test profile (used by BaseIntegrationTest.adminToken()).
+    admin:
+      enabled: true
+      password: Admin@123
   seed-demo:
     enabled: true   # integration tests opt out via @TestPropertySource(app.seed-demo.enabled=false)
   notification:
@@ -32,10 +45,32 @@ app:
       # Notification schedulers are driven deterministically from tests;
       # disable the background jobs so they never fire mid-suite.
       enabled: false
+  billing:
+    gateway:
+      simulator:
+        secret: sim-secret
+  payments:
+    providers:
+      simulator:
+        secret: sim-secret
+
+# The test profile uses well-known, non-secret keys that are only valid for the
+# in-memory H2 instance; these must be explicit in the profile YAML because the
+# base application.yml is now fail-fast for all encryption secrets.
+jwt:
+  secret: "test-only-jwt-signing-key-not-for-production-1234567890ABCDEF"
+
+encryption:
+  secret: test-encryption-secret
+  salt: test-encryption-salt-abcdef0123456789
+
+server:
+  port: 8081
+  # Surface error messages in test so assertValidation can match them.
+  error:
+    include-message: always
+    include-binding-errors: always
 
 logging:
   level:
     com.jjenus.qliina_management: DEBUG
-
-server:
-  port: 8081

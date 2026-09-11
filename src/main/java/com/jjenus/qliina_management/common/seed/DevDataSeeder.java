@@ -656,7 +656,7 @@ public class DevDataSeeder implements CommandLineRunner {
 
     private void logCredentials() {
         log.info("==========================================================");
-        log.info(" Demo tenant login credentials (password: {})", DEMO_PASSWORD);
+        log.info(" Demo tenant login credentials (see DevDataSeeder for password)");
         log.info("   business slug : {}", DEMO_SLUG);
         log.info("   owner         : owner   @{}", DEMO_EMAIL_DOMAIN);
         log.info("   manager       : manager @{}", DEMO_EMAIL_DOMAIN);

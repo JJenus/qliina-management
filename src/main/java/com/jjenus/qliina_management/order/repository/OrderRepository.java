@@ -5,10 +5,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -22,6 +24,16 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
     Optional<Order> findByOrderNumber(String orderNumber);
 
     Optional<Order> findByTrackingNumber(String trackingNumber);
+
+    /**
+     * Serializes concurrent writers on an order row (payment settlement, refund
+     * balance recomputation, generate-link balance validation). Money paths must
+     * re-read balance due <em>while holding this lock</em> — otherwise two
+     * concurrent payments can both observe the order as unpaid and over-collect.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id")
+    Optional<Order> findByIdForUpdate(@Param("id") UUID id);
 
     Page<Order> findByCustomerId(UUID customerId, Pageable pageable);
 

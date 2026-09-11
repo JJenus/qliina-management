@@ -80,7 +80,7 @@ public class PaymentController {
             
             @Parameter(description = "Payment ID", required = true)
             @PathVariable UUID paymentId) {
-        return ResponseEntity.ok(paymentService.getPayment(paymentId));
+        return ResponseEntity.ok(paymentService.getPayment(businessId, paymentId));
     }
 
     @Operation(
@@ -326,7 +326,7 @@ public class PaymentController {
             
             @Parameter(description = "Account ID", required = true)
             @PathVariable UUID accountId) {
-        return ResponseEntity.ok(paymentService.getCorporateAccount(accountId));
+        return ResponseEntity.ok(paymentService.getCorporateAccount(businessId, accountId));
     }
 
     // ==================== Invoice Operations ====================

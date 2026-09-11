@@ -109,13 +109,14 @@ public class CustomPermissionEvaluator implements PermissionEvaluator {
             
             // Shop validation
             if (shopId == null) {
-                // Business-level permission (shopId not specified in annotation)
-                if (roleShopId == null) {
-                    log.debug("Granted: business-level permission");
-                    return true;
-                }
-                // Role is shop-specific but we're checking business-level - still allow if business matches
-                log.debug("Granted: business-level check, role has shop but business matches");
+                // Business-level permission (shopId not specified in annotation).
+                // Allow when the role belongs to this business regardless of its
+                // shop scope — business-wide resources (customers, orders …) are
+                // shared across all shops.  Cross-tenant isolation is enforced by
+                // the roleBusinessId check above; shop-level isolation applies
+                // only when the annotation supplies an explicit shopId (the else
+                // branch below).
+                log.debug("Granted: business-level permission (role belongs to this business)");
                 return true;
             } else {
                 // Shop-specific permission
