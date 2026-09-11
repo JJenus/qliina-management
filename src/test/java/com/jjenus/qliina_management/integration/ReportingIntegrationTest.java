@@ -245,6 +245,45 @@ class ReportingIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.shiftInfo.clockedIn").value(true));
     }
 
+    /**
+     * Regression: ItemStatusHistoryRepository aliased the timestamp as `ts` but the
+     * WorkerEventProjection getter was `getTimestamp()`, so Spring Data returned a
+     * null timestamp and both worker-dashboard/history and worker-dashboard 500'd
+     * once a worker had actually started/completed work. Drive real work events and
+     * assert both endpoints render.
+     */
+    @Test
+    void workerDashboardAndHistory_withRealWorkEvents() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        createPaidOrder(ctx);
+        String washer = createEmployee(ctx, "WASHER");
+        clockIn(ctx, washer);
+
+        MvcResult queue = get("/api/v1/" + ctx.businessId() + "/worker/orders/items/queue", washer)
+                .andExpect(status().isOk()).andReturn();
+        String queueJson = queue.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        List<String> itemIds = JsonPath.read(queueJson, "$.content[*].id");
+        assertThat(itemIds).isNotEmpty();
+
+        String itemId = itemIds.get(0);
+        post("/api/v1/" + ctx.businessId() + "/worker/orders/items/" + itemId + "/start", washer, null)
+                .andExpect(status().isOk());
+        post("/api/v1/" + ctx.businessId() + "/worker/orders/items/" + itemId + "/complete", washer, null)
+                .andExpect(status().isOk());
+
+        // History must bucket the completed work event by day (previously NPE'd on null ts).
+        get(base(ctx.businessId()) + "/worker-dashboard/history?days=7", washer)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.days").value(7))
+                .andExpect(jsonPath("$.dailyStats[0].date").exists())
+                .andExpect(jsonPath("$.dailyStats[*].itemsProcessed").isArray());
+
+        // Dashboard efficiency pairing (start->complete) must not NPE either.
+        get(base(ctx.businessId()) + "/worker-dashboard", washer)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.periodStats.itemsProcessed").value(1));
+    }
+
     @Test
     void workerDashboard_requiresAuth() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();

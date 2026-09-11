@@ -153,10 +153,10 @@ public class WorkerDashboardService {
         List<Long> durations = new ArrayList<>();
         for (var completion : itemStatusHistoryRepository.findWorkCompletions(workerId, start, end)) {
             startsByItem.getOrDefault(completion.getItemId(), List.of()).stream()
-                    .filter(s -> !s.isAfter(completion.getTimestamp()))
+                    .filter(s -> !s.isAfter(completion.getTs()))
                     .max(LocalDateTime::compareTo)
                     .ifPresent(s -> durations.add(
-                            Math.max(1, Duration.between(s, completion.getTimestamp()).toMinutes())));
+                            Math.max(1, Duration.between(s, completion.getTs()).toMinutes())));
         }
         Double avgMinutes = durations.isEmpty() ? null
                 : round1(durations.stream().mapToLong(Long::longValue).average().orElse(0));
@@ -184,7 +184,7 @@ public class WorkerDashboardService {
     private Map<UUID, List<LocalDateTime>> groupEvents(List<ItemStatusHistoryRepository.WorkerEventProjection> events) {
         Map<UUID, List<LocalDateTime>> byItem = new HashMap<>();
         for (var e : events) {
-            byItem.computeIfAbsent(e.getItemId(), k -> new ArrayList<>()).add(e.getTimestamp());
+            byItem.computeIfAbsent(e.getItemId(), k -> new ArrayList<>()).add(e.getTs());
         }
         return byItem;
     }
@@ -215,17 +215,17 @@ public class WorkerDashboardService {
         Map<LocalDate, Integer> completionsByDay = new HashMap<>();
         Map<UUID, List<LocalDateTime>> startsByItem = new HashMap<>();
         for (var e : itemStatusHistoryRepository.findWorkStarts(workerId, start, end)) {
-            startsByItem.computeIfAbsent(e.getItemId(), k -> new ArrayList<>()).add(e.getTimestamp());
+            startsByItem.computeIfAbsent(e.getItemId(), k -> new ArrayList<>()).add(e.getTs());
         }
         Map<LocalDate, List<Long>> durationsByDay = new HashMap<>();
         for (var c : itemStatusHistoryRepository.findWorkCompletions(workerId, start, end)) {
-            completionsByDay.merge(c.getTimestamp().toLocalDate(), 1, Integer::sum);
+            completionsByDay.merge(c.getTs().toLocalDate(), 1, Integer::sum);
             startsByItem.getOrDefault(c.getItemId(), List.of()).stream()
-                    .filter(s -> !s.isAfter(c.getTimestamp()))
+                    .filter(s -> !s.isAfter(c.getTs()))
                     .max(LocalDateTime::compareTo)
                     .ifPresent(s -> durationsByDay
-                            .computeIfAbsent(c.getTimestamp().toLocalDate(), k -> new ArrayList<>())
-                            .add(Math.max(1, Duration.between(s, c.getTimestamp()).toMinutes())));
+                            .computeIfAbsent(c.getTs().toLocalDate(), k -> new ArrayList<>())
+                            .add(Math.max(1, Duration.between(s, c.getTs()).toMinutes())));
         }
 
         List<WorkerHistoryDTO.DailyStatDTO> daily = new ArrayList<>();

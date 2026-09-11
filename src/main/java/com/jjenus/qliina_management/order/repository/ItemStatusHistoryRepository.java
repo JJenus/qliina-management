@@ -40,10 +40,11 @@ public interface ItemStatusHistoryRepository extends JpaRepository<ItemStatusHis
     /**
      * Lightweight projection of a worker's work events used to compute
      * efficiency metrics (start → complete durations) and daily buckets.
+     * Property names must match the query result aliases (itemId, ts).
      */
     interface WorkerEventProjection {
         UUID getItemId();
-        LocalDateTime getTimestamp();
+        LocalDateTime getTs();
     }
 
     /**
