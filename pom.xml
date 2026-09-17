@@ -204,6 +204,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>qliina</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -258,4 +259,86 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<!-- Optional profile to build a memory-lean deployable jar for tight
+	     constraints (e.g. Alwaysdata free tier: 256MB RAM). Excludes
+	     standalone optional libraries that the app never imports at runtime;
+	     the default build (no -Pdeploy) is unchanged.
+	-->
+	<profiles>
+		<profile>
+			<id>deploy</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.springframework.boot</groupId>
+						<artifactId>spring-boot-maven-plugin</artifactId>
+						<configuration>
+							<excludes>
+								<exclude>
+									<groupId>org.projectlombok</groupId>
+									<artifactId>lombok</artifactId>
+								</exclude>
+								<!-- Swagger UI / OpenAPI docs: not used at runtime -->
+								<exclude>
+									<groupId>org.springdoc</groupId>
+									<artifactId>springdoc-openapi-starter-common</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>org.springdoc</groupId>
+									<artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>org.springdoc</groupId>
+									<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>io.swagger.core.v3</groupId>
+									<artifactId>swagger-annotations-jakarta</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>io.swagger.core.v3</groupId>
+									<artifactId>swagger-core-jakarta</artifactId>
+								</exclude>
+								<!-- swagger-models-jakarta must stay: OpenAPIConfig uses io.swagger.v3.oas.models.* -->
+								<exclude>
+									<groupId>org.webjars</groupId>
+									<artifactId>swagger-ui</artifactId>
+								</exclude>
+								<!-- Actuator endpoints + Prometheus: not required for this
+								     deployment. Micrometer OBSERVATION jars must stay:
+								     Spring Boot weaves observation into @Scheduled/
+								     web runtime which the app relies on. -->
+								<exclude>
+									<groupId>org.springframework.boot</groupId>
+									<artifactId>spring-boot-starter-actuator</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>org.springframework.boot</groupId>
+									<artifactId>spring-boot-actuator</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>org.springframework.boot</groupId>
+									<artifactId>spring-boot-actuator-autoconfigure</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>io.micrometer</groupId>
+									<artifactId>micrometer-registry-prometheus</artifactId>
+								</exclude>
+								<!-- H2 console + H2 driver: Postgres only in prod -->
+								<exclude>
+									<groupId>org.springframework.boot</groupId>
+									<artifactId>spring-boot-h2console</artifactId>
+								</exclude>
+								<exclude>
+									<groupId>com.h2database</groupId>
+									<artifactId>h2</artifactId>
+								</exclude>
+							</excludes>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

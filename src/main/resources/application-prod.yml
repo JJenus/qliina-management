@@ -27,7 +27,7 @@ server:
 app:
   # Cross-origin API calls are DENIED by default (fail-closed). Set
   # CORS_ALLOWED_ORIGINS to the exact deployed origin(s), e.g.
-  # "https://app.qliina.com,https://admin.qliina.com". Never "*" with credentials.
+  # "https://sqliina.com,https://app.qliina.com,https://admin.qliina.com,https://qliina.vercel.app". Never "*" with credentials.
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   # Platform-admin bootstrap is OFF in prod by default — override with

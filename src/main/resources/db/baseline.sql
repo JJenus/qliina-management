@@ -2,6 +2,8 @@
 -- PostgreSQL database dump
 --
 
+\restrict 5EgqTbEymbrfRg1hcho2M6xMgXroM1Cqa1qvfUPjfkTlFf9xzR89md4YRX6KMmD
+
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
@@ -16,14 +18,7 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
---
--- Name: public; Type: SCHEMA; Schema: -; Owner: -
--- NOTE: public schema already exists on any fresh PostgreSQL database;
--- kept commented to keep `psql -f` imports clean (no duplicate-schema error).
---
-
-CREATE SCHEMA IF NOT EXISTS public;
-
+SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
@@ -50,7 +45,7 @@ CREATE TABLE public.attendance (
     overtime_hours double precision,
     status character varying(255) NOT NULL,
     total_hours double precision,
-    CONSTRAINT attendance_status_check CHECK (((status)::text = ANY ((ARRAY['PRESENT'::character varying, 'ABSENT'::character varying, 'LATE'::character varying, 'HALF_DAY'::character varying, 'HOLIDAY'::character varying, 'LEAVE'::character varying, 'SICK'::character varying])::text[])))
+    CONSTRAINT attendance_status_check CHECK (((status)::text = ANY (ARRAY[('PRESENT'::character varying)::text, ('ABSENT'::character varying)::text, ('LATE'::character varying)::text, ('HALF_DAY'::character varying)::text, ('HOLIDAY'::character varying)::text, ('LEAVE'::character varying)::text, ('SICK'::character varying)::text])))
 );
 
 
@@ -91,7 +86,7 @@ CREATE TABLE public.audit_logs (
     user_email character varying(255),
     user_id uuid,
     user_name character varying(255),
-    CONSTRAINT audit_logs_severity_check CHECK (((severity)::text = ANY ((ARRAY['INFO'::character varying, 'WARNING'::character varying, 'ERROR'::character varying, 'CRITICAL'::character varying])::text[])))
+    CONSTRAINT audit_logs_severity_check CHECK (((severity)::text = ANY (ARRAY[('INFO'::character varying)::text, ('WARNING'::character varying)::text, ('ERROR'::character varying)::text, ('CRITICAL'::character varying)::text])))
 );
 
 
@@ -155,8 +150,8 @@ CREATE TABLE public.billing_coupons (
     redemptions_count integer NOT NULL,
     starts_at timestamp(6) without time zone,
     status character varying(20) NOT NULL,
-    CONSTRAINT billing_coupons_discount_type_check CHECK (((discount_type)::text = ANY ((ARRAY['PERCENT'::character varying, 'FIXED_AMOUNT'::character varying])::text[]))),
-    CONSTRAINT billing_coupons_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'DISABLED'::character varying, 'EXPIRED'::character varying])::text[])))
+    CONSTRAINT billing_coupons_discount_type_check CHECK (((discount_type)::text = ANY (ARRAY[('PERCENT'::character varying)::text, ('FIXED_AMOUNT'::character varying)::text]))),
+    CONSTRAINT billing_coupons_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('DISABLED'::character varying)::text, ('EXPIRED'::character varying)::text])))
 );
 
 
@@ -187,7 +182,7 @@ CREATE TABLE public.billing_invoice_line_items (
     period_start timestamp(6) without time zone,
     type character varying(30) NOT NULL,
     invoice_id uuid NOT NULL,
-    CONSTRAINT billing_invoice_line_items_type_check CHECK (((type)::text = ANY ((ARRAY['SUBSCRIPTION'::character varying, 'PRORATION_CREDIT'::character varying, 'PRORATION_CHARGE'::character varying, 'ONE_OFF'::character varying, 'TAX'::character varying])::text[])))
+    CONSTRAINT billing_invoice_line_items_type_check CHECK (((type)::text = ANY (ARRAY[('SUBSCRIPTION'::character varying)::text, ('PRORATION_CREDIT'::character varying)::text, ('PRORATION_CHARGE'::character varying)::text, ('ONE_OFF'::character varying)::text, ('TAX'::character varying)::text])))
 );
 
 
@@ -209,7 +204,7 @@ CREATE TABLE public.billing_invoices (
     issued_at timestamp(6) without time zone NOT NULL,
     status character varying(20) NOT NULL,
     subscription_id uuid NOT NULL,
-    CONSTRAINT billing_invoices_status_check CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'OPEN'::character varying, 'PAID'::character varying, 'FAILED'::character varying])::text[])))
+    CONSTRAINT billing_invoices_status_check CHECK (((status)::text = ANY (ARRAY[('DRAFT'::character varying)::text, ('OPEN'::character varying)::text, ('PAID'::character varying)::text, ('FAILED'::character varying)::text])))
 );
 
 
@@ -230,7 +225,7 @@ CREATE TABLE public.billing_payment_methods (
     is_default boolean NOT NULL,
     label character varying(120),
     type character varying(20) NOT NULL,
-    CONSTRAINT billing_payment_methods_type_check CHECK (((type)::text = ANY ((ARRAY['CARD'::character varying, 'BANK'::character varying])::text[])))
+    CONSTRAINT billing_payment_methods_type_check CHECK (((type)::text = ANY (ARRAY[('CARD'::character varying)::text, ('BANK'::character varying)::text])))
 );
 
 
@@ -256,7 +251,7 @@ CREATE TABLE public.billing_payments (
     paid_at timestamp(6) without time zone,
     payment_method_id uuid,
     status character varying(20) NOT NULL,
-    CONSTRAINT billing_payments_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'APPROVED'::character varying, 'FAILED'::character varying, 'REFUNDED'::character varying, 'DISPUTED'::character varying])::text[])))
+    CONSTRAINT billing_payments_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('APPROVED'::character varying)::text, ('FAILED'::character varying)::text, ('REFUNDED'::character varying)::text, ('DISPUTED'::character varying)::text])))
 );
 
 
@@ -311,7 +306,7 @@ CREATE TABLE public.billing_plans (
     description text,
     name character varying(120) NOT NULL,
     status character varying(20) NOT NULL,
-    CONSTRAINT billing_plans_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'DEPRECATED'::character varying, 'ARCHIVED'::character varying])::text[])))
+    CONSTRAINT billing_plans_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('DEPRECATED'::character varying)::text, ('ARCHIVED'::character varying)::text])))
 );
 
 
@@ -342,8 +337,8 @@ CREATE TABLE public.billing_subscription_events (
     reason text,
     subscription_id uuid NOT NULL,
     to_status character varying(20) NOT NULL,
-    CONSTRAINT billing_subscription_events_from_status_check CHECK (((from_status)::text = ANY ((ARRAY['TRIALING'::character varying, 'ACTIVE'::character varying, 'PAST_DUE'::character varying, 'CANCELED'::character varying])::text[]))),
-    CONSTRAINT billing_subscription_events_to_status_check CHECK (((to_status)::text = ANY ((ARRAY['TRIALING'::character varying, 'ACTIVE'::character varying, 'PAST_DUE'::character varying, 'CANCELED'::character varying])::text[])))
+    CONSTRAINT billing_subscription_events_from_status_check CHECK (((from_status)::text = ANY (ARRAY[('TRIALING'::character varying)::text, ('ACTIVE'::character varying)::text, ('PAST_DUE'::character varying)::text, ('CANCELED'::character varying)::text]))),
+    CONSTRAINT billing_subscription_events_to_status_check CHECK (((to_status)::text = ANY (ARRAY[('TRIALING'::character varying)::text, ('ACTIVE'::character varying)::text, ('PAST_DUE'::character varying)::text, ('CANCELED'::character varying)::text])))
 );
 
 
@@ -388,7 +383,7 @@ CREATE TABLE public.billing_subscriptions (
     pending_plan_id uuid,
     plan_id uuid NOT NULL,
     plan_version_id uuid NOT NULL,
-    CONSTRAINT billing_subscriptions_status_check CHECK (((status)::text = ANY ((ARRAY['TRIALING'::character varying, 'ACTIVE'::character varying, 'PAST_DUE'::character varying, 'CANCELED'::character varying])::text[])))
+    CONSTRAINT billing_subscriptions_status_check CHECK (((status)::text = ANY (ARRAY[('TRIALING'::character varying)::text, ('ACTIVE'::character varying)::text, ('PAST_DUE'::character varying)::text, ('CANCELED'::character varying)::text])))
 );
 
 
@@ -479,8 +474,8 @@ CREATE TABLE public.businesses (
     slug character varying(80) NOT NULL,
     status character varying(20) NOT NULL,
     trial_ends_at timestamp(6) without time zone,
-    CONSTRAINT businesses_plan_check CHECK (((plan)::text = ANY ((ARRAY['FREE'::character varying, 'STARTER'::character varying, 'PRO'::character varying, 'ENTERPRISE'::character varying])::text[]))),
-    CONSTRAINT businesses_status_check CHECK (((status)::text = ANY ((ARRAY['TRIAL'::character varying, 'ACTIVE'::character varying, 'SUSPENDED'::character varying, 'CANCELLED'::character varying])::text[])))
+    CONSTRAINT businesses_plan_check CHECK (((plan)::text = ANY (ARRAY[('FREE'::character varying)::text, ('STARTER'::character varying)::text, ('PRO'::character varying)::text, ('ENTERPRISE'::character varying)::text]))),
+    CONSTRAINT businesses_status_check CHECK (((status)::text = ANY (ARRAY[('TRIAL'::character varying)::text, ('ACTIVE'::character varying)::text, ('SUSPENDED'::character varying)::text, ('CANCELLED'::character varying)::text])))
 );
 
 
@@ -601,8 +596,8 @@ CREATE TABLE public.consent_records (
     revoked_ip character varying(255),
     status character varying(255),
     user_agent character varying(255),
-    CONSTRAINT consent_records_consent_type_check CHECK (((consent_type)::text = ANY ((ARRAY['MARKETING'::character varying, 'SMS'::character varying, 'EMAIL'::character varying, 'DATA_PROCESSING'::character varying, 'TERMS_AND_CONDITIONS'::character varying, 'PRIVACY_POLICY'::character varying, 'COOKIES'::character varying])::text[]))),
-    CONSTRAINT consent_records_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'EXPIRED'::character varying, 'REVOKED'::character varying, 'SUPERSEDED'::character varying])::text[])))
+    CONSTRAINT consent_records_consent_type_check CHECK (((consent_type)::text = ANY (ARRAY[('MARKETING'::character varying)::text, ('SMS'::character varying)::text, ('EMAIL'::character varying)::text, ('DATA_PROCESSING'::character varying)::text, ('TERMS_AND_CONDITIONS'::character varying)::text, ('PRIVACY_POLICY'::character varying)::text, ('COOKIES'::character varying)::text]))),
+    CONSTRAINT consent_records_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('EXPIRED'::character varying)::text, ('REVOKED'::character varying)::text, ('SUPERSEDED'::character varying)::text])))
 );
 
 
@@ -784,8 +779,8 @@ CREATE TABLE public.data_subject_requests (
     submitted_at timestamp(6) without time zone NOT NULL,
     verification_method character varying(255),
     verification_status boolean,
-    CONSTRAINT data_subject_requests_request_type_check CHECK (((request_type)::text = ANY ((ARRAY['ACCESS'::character varying, 'RECTIFICATION'::character varying, 'ERASURE'::character varying, 'RESTRICTION'::character varying, 'PORTABILITY'::character varying, 'OBJECTION'::character varying])::text[]))),
-    CONSTRAINT data_subject_requests_status_check CHECK (((status)::text = ANY ((ARRAY['SUBMITTED'::character varying, 'VERIFYING'::character varying, 'IN_PROGRESS'::character varying, 'COMPLETED'::character varying, 'REJECTED'::character varying, 'EXPIRED'::character varying])::text[])))
+    CONSTRAINT data_subject_requests_request_type_check CHECK (((request_type)::text = ANY (ARRAY[('ACCESS'::character varying)::text, ('RECTIFICATION'::character varying)::text, ('ERASURE'::character varying)::text, ('RESTRICTION'::character varying)::text, ('PORTABILITY'::character varying)::text, ('OBJECTION'::character varying)::text]))),
+    CONSTRAINT data_subject_requests_status_check CHECK (((status)::text = ANY (ARRAY[('SUBMITTED'::character varying)::text, ('VERIFYING'::character varying)::text, ('IN_PROGRESS'::character varying)::text, ('COMPLETED'::character varying)::text, ('REJECTED'::character varying)::text, ('EXPIRED'::character varying)::text])))
 );
 
 
@@ -902,7 +897,7 @@ CREATE TABLE public.employee_schedules (
     recurring_pattern character varying(255),
     role character varying(255),
     start_time time(0) without time zone NOT NULL,
-    CONSTRAINT employee_schedules_day_of_week_check CHECK (((day_of_week)::text = ANY ((ARRAY['MONDAY'::character varying, 'TUESDAY'::character varying, 'WEDNESDAY'::character varying, 'THURSDAY'::character varying, 'FRIDAY'::character varying, 'SATURDAY'::character varying, 'SUNDAY'::character varying])::text[])))
+    CONSTRAINT employee_schedules_day_of_week_check CHECK (((day_of_week)::text = ANY (ARRAY[('MONDAY'::character varying)::text, ('TUESDAY'::character varying)::text, ('WEDNESDAY'::character varying)::text, ('THURSDAY'::character varying)::text, ('FRIDAY'::character varying)::text, ('SATURDAY'::character varying)::text, ('SUNDAY'::character varying)::text])))
 );
 
 
@@ -938,7 +933,7 @@ CREATE TABLE public.employee_shifts (
     total_break_minutes integer,
     total_suspend_minutes integer,
     total_work_minutes integer,
-    CONSTRAINT employee_shifts_status_check CHECK (((status)::text = ANY ((ARRAY['SCHEDULED'::character varying, 'CHECKED_IN'::character varying, 'ON_BREAK'::character varying, 'SUSPENDED'::character varying, 'CHECKED_OUT'::character varying, 'ABSENT'::character varying, 'CANCELLED'::character varying, 'COMPLETED'::character varying])::text[])))
+    CONSTRAINT employee_shifts_status_check CHECK (((status)::text = ANY (ARRAY[('SCHEDULED'::character varying)::text, ('CHECKED_IN'::character varying)::text, ('ON_BREAK'::character varying)::text, ('SUSPENDED'::character varying)::text, ('CHECKED_OUT'::character varying)::text, ('ABSENT'::character varying)::text, ('CANCELLED'::character varying)::text, ('COMPLETED'::character varying)::text])))
 );
 
 
@@ -962,7 +957,7 @@ CREATE TABLE public.employee_targets (
     metric character varying(255) NOT NULL,
     notes character varying(255),
     target_value integer NOT NULL,
-    CONSTRAINT employee_targets_metric_check CHECK (((metric)::text = ANY ((ARRAY['ORDERS'::character varying, 'ITEMS'::character varying, 'REVENUE'::character varying, 'QUALITY'::character varying, 'CUSTOMER_SATISFACTION'::character varying])::text[])))
+    CONSTRAINT employee_targets_metric_check CHECK (((metric)::text = ANY (ARRAY[('ORDERS'::character varying)::text, ('ITEMS'::character varying)::text, ('REVENUE'::character varying)::text, ('QUALITY'::character varying)::text, ('CUSTOMER_SATISFACTION'::character varying)::text])))
 );
 
 
@@ -986,7 +981,7 @@ CREATE TABLE public.expenses (
     notes text,
     paid_to character varying(255),
     reference character varying(255),
-    CONSTRAINT expenses_category_check CHECK (((category)::text = ANY ((ARRAY['SUPPLIES'::character varying, 'UTILITIES'::character varying, 'WAGES'::character varying, 'RENT'::character varying, 'EQUIPMENT'::character varying, 'MARKETING'::character varying, 'REPAIRS'::character varying, 'INSURANCE'::character varying, 'TAXES'::character varying, 'TRANSPORT'::character varying, 'OTHER'::character varying])::text[])))
+    CONSTRAINT expenses_category_check CHECK (((category)::text = ANY (ARRAY[('SUPPLIES'::character varying)::text, ('UTILITIES'::character varying)::text, ('WAGES'::character varying)::text, ('RENT'::character varying)::text, ('EQUIPMENT'::character varying)::text, ('MARKETING'::character varying)::text, ('REPAIRS'::character varying)::text, ('INSURANCE'::character varying)::text, ('TAXES'::character varying)::text, ('TRANSPORT'::character varying)::text, ('OTHER'::character varying)::text])))
 );
 
 
@@ -1039,8 +1034,8 @@ CREATE TABLE public.inventory_items (
     supplier_id uuid,
     unit character varying(255) NOT NULL,
     unit_price numeric(10,2),
-    CONSTRAINT inventory_items_category_check CHECK (((category)::text = ANY ((ARRAY['DETERGENT'::character varying, 'SOFTENER'::character varying, 'BLEACH'::character varying, 'STAIN_REMOVAL'::character varying, 'PACKAGING'::character varying, 'HANGER'::character varying, 'TAG'::character varying, 'LABEL'::character varying, 'GLOVE'::character varying, 'MASK'::character varying, 'CLEANING_SUPPLY'::character varying, 'OTHER'::character varying])::text[]))),
-    CONSTRAINT inventory_items_unit_check CHECK (((unit)::text = ANY ((ARRAY['LITER'::character varying, 'MILLILITER'::character varying, 'KILOGRAM'::character varying, 'GRAM'::character varying, 'PIECE'::character varying, 'BOX'::character varying, 'CASE'::character varying, 'BOTTLE'::character varying, 'BAG'::character varying, 'ROLL'::character varying])::text[])))
+    CONSTRAINT inventory_items_category_check CHECK (((category)::text = ANY (ARRAY[('DETERGENT'::character varying)::text, ('SOFTENER'::character varying)::text, ('BLEACH'::character varying)::text, ('STAIN_REMOVAL'::character varying)::text, ('PACKAGING'::character varying)::text, ('HANGER'::character varying)::text, ('TAG'::character varying)::text, ('LABEL'::character varying)::text, ('GLOVE'::character varying)::text, ('MASK'::character varying)::text, ('CLEANING_SUPPLY'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT inventory_items_unit_check CHECK (((unit)::text = ANY (ARRAY[('LITER'::character varying)::text, ('MILLILITER'::character varying)::text, ('KILOGRAM'::character varying)::text, ('GRAM'::character varying)::text, ('PIECE'::character varying)::text, ('BOX'::character varying)::text, ('CASE'::character varying)::text, ('BOTTLE'::character varying)::text, ('BAG'::character varying)::text, ('ROLL'::character varying)::text])))
 );
 
 
@@ -1227,9 +1222,9 @@ CREATE TABLE public.notification_deliveries (
     recipient character varying(255),
     sent_at timestamp(6) without time zone,
     status character varying(255) NOT NULL,
-    CONSTRAINT notification_deliveries_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT notification_deliveries_last_error_type_check CHECK (((last_error_type)::text = ANY ((ARRAY['TRANSIENT'::character varying, 'PERMANENT'::character varying])::text[]))),
-    CONSTRAINT notification_deliveries_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'SENT'::character varying, 'FAILED'::character varying, 'EXHAUSTED'::character varying])::text[])))
+    CONSTRAINT notification_deliveries_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT notification_deliveries_last_error_type_check CHECK (((last_error_type)::text = ANY (ARRAY[('TRANSIENT'::character varying)::text, ('PERMANENT'::character varying)::text]))),
+    CONSTRAINT notification_deliveries_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('SENT'::character varying)::text, ('FAILED'::character varying)::text, ('EXHAUSTED'::character varying)::text])))
 );
 
 
@@ -1250,7 +1245,7 @@ CREATE TABLE public.notification_delivery_events (
     detail character varying(255),
     event_type character varying(255) NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT notification_delivery_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['SENT'::character varying, 'DELIVERED'::character varying, 'OPENED'::character varying, 'CLICKED'::character varying, 'FAILED'::character varying])::text[])))
+    CONSTRAINT notification_delivery_events_event_type_check CHECK (((event_type)::text = ANY (ARRAY[('SENT'::character varying)::text, ('DELIVERED'::character varying)::text, ('OPENED'::character varying)::text, ('CLICKED'::character varying)::text, ('FAILED'::character varying)::text])))
 );
 
 
@@ -1278,8 +1273,8 @@ CREATE TABLE public.notification_logs (
     status character varying(255) NOT NULL,
     subject character varying(255),
     notification_id uuid,
-    CONSTRAINT notification_logs_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT notification_logs_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'SENT'::character varying, 'DELIVERED'::character varying, 'FAILED'::character varying, 'BOUNCED'::character varying, 'COMPLAINT'::character varying])::text[])))
+    CONSTRAINT notification_logs_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT notification_logs_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('SENT'::character varying)::text, ('DELIVERED'::character varying)::text, ('FAILED'::character varying)::text, ('BOUNCED'::character varying)::text, ('COMPLAINT'::character varying)::text])))
 );
 
 
@@ -1314,10 +1309,10 @@ CREATE TABLE public.notification_outbox (
     title character varying(255),
     type character varying(255) NOT NULL,
     user_id uuid,
-    CONSTRAINT notification_outbox_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT notification_outbox_priority_check CHECK (((priority)::text = ANY ((ARRAY['LOW'::character varying, 'NORMAL'::character varying, 'HIGH'::character varying, 'URGENT'::character varying])::text[]))),
-    CONSTRAINT notification_outbox_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PROCESSED'::character varying, 'DEAD'::character varying])::text[]))),
-    CONSTRAINT notification_outbox_type_check CHECK (((type)::text = ANY ((ARRAY['ORDER_STATUS'::character varying, 'PAYMENT'::character varying, 'REMINDER'::character varying, 'PROMOTION'::character varying, 'ALERT'::character varying, 'SYSTEM'::character varying, 'STOCK_REQUEST'::character varying])::text[])))
+    CONSTRAINT notification_outbox_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT notification_outbox_priority_check CHECK (((priority)::text = ANY (ARRAY[('LOW'::character varying)::text, ('NORMAL'::character varying)::text, ('HIGH'::character varying)::text, ('URGENT'::character varying)::text]))),
+    CONSTRAINT notification_outbox_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('PROCESSED'::character varying)::text, ('DEAD'::character varying)::text]))),
+    CONSTRAINT notification_outbox_type_check CHECK (((type)::text = ANY (ARRAY[('ORDER_STATUS'::character varying)::text, ('PAYMENT'::character varying)::text, ('REMINDER'::character varying)::text, ('PROMOTION'::character varying)::text, ('ALERT'::character varying)::text, ('SYSTEM'::character varying)::text, ('STOCK_REQUEST'::character varying)::text])))
 );
 
 
@@ -1344,8 +1339,8 @@ CREATE TABLE public.notification_templates (
     title_template character varying(255),
     type character varying(255) NOT NULL,
     variables text[],
-    CONSTRAINT notification_templates_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT notification_templates_type_check CHECK (((type)::text = ANY ((ARRAY['ORDER_STATUS'::character varying, 'PAYMENT'::character varying, 'REMINDER'::character varying, 'PROMOTION'::character varying, 'ALERT'::character varying, 'SYSTEM'::character varying, 'STOCK_REQUEST'::character varying])::text[])))
+    CONSTRAINT notification_templates_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT notification_templates_type_check CHECK (((type)::text = ANY (ARRAY[('ORDER_STATUS'::character varying)::text, ('PAYMENT'::character varying)::text, ('REMINDER'::character varying)::text, ('PROMOTION'::character varying)::text, ('ALERT'::character varying)::text, ('SYSTEM'::character varying)::text, ('STOCK_REQUEST'::character varying)::text])))
 );
 
 
@@ -1377,10 +1372,10 @@ CREATE TABLE public.notifications (
     title character varying(255) NOT NULL,
     type character varying(255) NOT NULL,
     user_id uuid,
-    CONSTRAINT notifications_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT notifications_priority_check CHECK (((priority)::text = ANY ((ARRAY['LOW'::character varying, 'NORMAL'::character varying, 'HIGH'::character varying, 'URGENT'::character varying])::text[]))),
-    CONSTRAINT notifications_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'SENT'::character varying, 'DELIVERED'::character varying, 'FAILED'::character varying, 'READ'::character varying, 'CANCELLED'::character varying])::text[]))),
-    CONSTRAINT notifications_type_check CHECK (((type)::text = ANY ((ARRAY['ORDER_STATUS'::character varying, 'PAYMENT'::character varying, 'REMINDER'::character varying, 'PROMOTION'::character varying, 'ALERT'::character varying, 'SYSTEM'::character varying, 'STOCK_REQUEST'::character varying])::text[])))
+    CONSTRAINT notifications_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT notifications_priority_check CHECK (((priority)::text = ANY (ARRAY[('LOW'::character varying)::text, ('NORMAL'::character varying)::text, ('HIGH'::character varying)::text, ('URGENT'::character varying)::text]))),
+    CONSTRAINT notifications_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('SENT'::character varying)::text, ('DELIVERED'::character varying)::text, ('FAILED'::character varying)::text, ('READ'::character varying)::text, ('CANCELLED'::character varying)::text]))),
+    CONSTRAINT notifications_type_check CHECK (((type)::text = ANY (ARRAY[('ORDER_STATUS'::character varying)::text, ('PAYMENT'::character varying)::text, ('REMINDER'::character varying)::text, ('PROMOTION'::character varying)::text, ('ALERT'::character varying)::text, ('SYSTEM'::character varying)::text, ('STOCK_REQUEST'::character varying)::text])))
 );
 
 
@@ -1406,8 +1401,8 @@ CREATE TABLE public.order_discrepancies (
     status character varying(255) NOT NULL,
     type character varying(255) NOT NULL,
     order_id uuid NOT NULL,
-    CONSTRAINT order_discrepancies_status_check CHECK (((status)::text = ANY ((ARRAY['OPEN'::character varying, 'ACKNOWLEDGED'::character varying, 'RESOLVED'::character varying, 'DISMISSED'::character varying])::text[]))),
-    CONSTRAINT order_discrepancies_type_check CHECK (((type)::text = ANY ((ARRAY['CODE_MISMATCH'::character varying, 'COUNT_MISMATCH'::character varying, 'DAMAGED'::character varying, 'MISSING_ITEM'::character varying, 'OTHER'::character varying])::text[])))
+    CONSTRAINT order_discrepancies_status_check CHECK (((status)::text = ANY (ARRAY[('OPEN'::character varying)::text, ('ACKNOWLEDGED'::character varying)::text, ('RESOLVED'::character varying)::text, ('DISMISSED'::character varying)::text]))),
+    CONSTRAINT order_discrepancies_type_check CHECK (((type)::text = ANY (ARRAY[('CODE_MISMATCH'::character varying)::text, ('COUNT_MISMATCH'::character varying)::text, ('DAMAGED'::character varying)::text, ('MISSING_ITEM'::character varying)::text, ('OTHER'::character varying)::text])))
 );
 
 
@@ -1457,7 +1452,7 @@ CREATE TABLE public.order_items (
     unit_price numeric(10,2),
     weight numeric(10,2),
     order_id uuid NOT NULL,
-    CONSTRAINT order_items_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'RECEIVED'::character varying, 'WASHING'::character varying, 'WASHED'::character varying, 'IRONING'::character varying, 'IRONED'::character varying, 'QUALITY_CHECK'::character varying, 'COMPLETED'::character varying, 'ISSUE_REPORTED'::character varying])::text[])))
+    CONSTRAINT order_items_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('RECEIVED'::character varying)::text, ('WASHING'::character varying)::text, ('WASHED'::character varying)::text, ('IRONING'::character varying)::text, ('IRONED'::character varying)::text, ('QUALITY_CHECK'::character varying)::text, ('COMPLETED'::character varying)::text, ('ISSUE_REPORTED'::character varying)::text])))
 );
 
 
@@ -1506,24 +1501,6 @@ CREATE TABLE public.order_payments (
     provider character varying(32),
     provider_reference character varying(255),
     provider_status character varying(64)
-);
-
-
---
--- Name: payment_provider_configs; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.payment_provider_configs (
-    id uuid NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    created_by uuid,
-    updated_at timestamp(6) without time zone,
-    updated_by uuid,
-    version bigint,
-    business_id uuid NOT NULL,
-    shop_id uuid,
-    provider character varying(32) NOT NULL,
-    enabled boolean NOT NULL
 );
 
 
@@ -1595,8 +1572,8 @@ CREATE TABLE public.orders (
     status character varying(255) NOT NULL,
     total_amount numeric(10,2),
     tracking_number character varying(255) NOT NULL,
-    CONSTRAINT orders_priority_check CHECK (((priority)::text = ANY ((ARRAY['NORMAL'::character varying, 'EXPRESS'::character varying, 'URGENT'::character varying])::text[]))),
-    CONSTRAINT orders_status_check CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'RECEIVED'::character varying, 'WASHING'::character varying, 'WASHED'::character varying, 'IRONING'::character varying, 'IRONED'::character varying, 'QUALITY_CHECK'::character varying, 'READY_FOR_PICKUP'::character varying, 'OUT_FOR_DELIVERY'::character varying, 'COMPLETED'::character varying, 'RETURNED'::character varying, 'CANCELLED'::character varying, 'ARCHIVED'::character varying])::text[])))
+    CONSTRAINT orders_priority_check CHECK (((priority)::text = ANY (ARRAY[('NORMAL'::character varying)::text, ('EXPRESS'::character varying)::text, ('URGENT'::character varying)::text]))),
+    CONSTRAINT orders_status_check CHECK (((status)::text = ANY (ARRAY[('DRAFT'::character varying)::text, ('RECEIVED'::character varying)::text, ('WASHING'::character varying)::text, ('WASHED'::character varying)::text, ('IRONING'::character varying)::text, ('IRONED'::character varying)::text, ('QUALITY_CHECK'::character varying)::text, ('READY_FOR_PICKUP'::character varying)::text, ('OUT_FOR_DELIVERY'::character varying)::text, ('COMPLETED'::character varying)::text, ('RETURNED'::character varying)::text, ('CANCELLED'::character varying)::text, ('ARCHIVED'::character varying)::text])))
 );
 
 
@@ -1643,6 +1620,53 @@ CREATE TABLE public.payment_methods (
 
 
 --
+-- Name: payment_provider_configs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_provider_configs (
+    id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    created_by uuid,
+    updated_at timestamp(6) without time zone,
+    updated_by uuid,
+    version bigint,
+    business_id uuid NOT NULL,
+    shop_id uuid,
+    provider character varying(32) NOT NULL,
+    enabled boolean NOT NULL,
+    connection_mode character varying(16),
+    credentials_encrypted text,
+    platform_subaccount_id character varying(64),
+    CONSTRAINT payment_provider_configs_connection_mode_check CHECK (((connection_mode)::text = ANY ((ARRAY['DISCONNECTED'::character varying, 'PLATFORM'::character varying, 'BYO'::character varying])::text[])))
+);
+
+
+--
+-- Name: payment_reconciliation_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_reconciliation_items (
+    id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    created_by uuid,
+    updated_at timestamp(6) without time zone,
+    updated_by uuid,
+    version bigint,
+    amount numeric(12,2) NOT NULL,
+    business_id uuid,
+    notes character varying(255),
+    order_id uuid,
+    provider character varying(32) NOT NULL,
+    provider_reference character varying(255) NOT NULL,
+    raw_event text,
+    received_at timestamp(6) without time zone NOT NULL,
+    resolved_at timestamp(6) without time zone,
+    resolved_by uuid,
+    status character varying(16) NOT NULL
+);
+
+
+--
 -- Name: permissions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1659,7 +1683,24 @@ CREATE TABLE public.permissions (
     is_default boolean,
     name character varying(255) NOT NULL,
     scope character varying(255),
-    CONSTRAINT permissions_scope_check CHECK (((scope)::text = ANY ((ARRAY['GLOBAL'::character varying, 'BUSINESS'::character varying, 'SHOP'::character varying])::text[])))
+    CONSTRAINT permissions_scope_check CHECK (((scope)::text = ANY (ARRAY[('GLOBAL'::character varying)::text, ('BUSINESS'::character varying)::text, ('SHOP'::character varying)::text])))
+);
+
+
+--
+-- Name: platform_payment_provider_configs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.platform_payment_provider_configs (
+    id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    created_by uuid,
+    updated_at timestamp(6) without time zone,
+    updated_by uuid,
+    version bigint,
+    platform_enabled boolean NOT NULL,
+    provider character varying(32) NOT NULL,
+    updated_by_username character varying(255)
 );
 
 
@@ -1712,7 +1753,7 @@ CREATE TABLE public.purchase_orders (
     terms character varying(255),
     total numeric(10,2),
     supplier_id uuid NOT NULL,
-    CONSTRAINT purchase_orders_status_check CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'SENT'::character varying, 'CONFIRMED'::character varying, 'SHIPPED'::character varying, 'PARTIALLY_RECEIVED'::character varying, 'RECEIVED'::character varying, 'CANCELLED'::character varying, 'REJECTED'::character varying, 'APPROVED'::character varying])::text[])))
+    CONSTRAINT purchase_orders_status_check CHECK (((status)::text = ANY (ARRAY[('DRAFT'::character varying)::text, ('SENT'::character varying)::text, ('CONFIRMED'::character varying)::text, ('SHIPPED'::character varying)::text, ('PARTIALLY_RECEIVED'::character varying)::text, ('RECEIVED'::character varying)::text, ('CANCELLED'::character varying)::text, ('REJECTED'::character varying)::text, ('APPROVED'::character varying)::text])))
 );
 
 
@@ -1850,7 +1891,7 @@ CREATE TABLE public.roles (
     is_system boolean,
     name character varying(255) NOT NULL,
     type character varying(255) NOT NULL,
-    CONSTRAINT roles_type_check CHECK (((type)::text = ANY ((ARRAY['PLATFORM'::character varying, 'BUSINESS'::character varying, 'CUSTOM'::character varying])::text[])))
+    CONSTRAINT roles_type_check CHECK (((type)::text = ANY (ARRAY[('PLATFORM'::character varying)::text, ('BUSINESS'::character varying)::text, ('CUSTOM'::character varying)::text])))
 );
 
 
@@ -1881,8 +1922,8 @@ CREATE TABLE public.security_events (
     user_agent character varying(255),
     user_id uuid,
     username character varying(255),
-    CONSTRAINT security_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['LOGIN_SUCCESS'::character varying, 'LOGIN_FAILED'::character varying, 'LOGOUT'::character varying, 'PASSWORD_CHANGE'::character varying, 'PASSWORD_RESET'::character varying, 'TWO_FACTOR_ENABLED'::character varying, 'TWO_FACTOR_DISABLED'::character varying, 'TWO_FACTOR_FAILED'::character varying, 'PERMISSION_CHANGE'::character varying, 'ROLE_CHANGE'::character varying, 'USER_LOCKED'::character varying, 'USER_UNLOCKED'::character varying, 'SUSPICIOUS_ACTIVITY'::character varying, 'BRUTE_FORCE_ATTEMPT'::character varying, 'API_ABUSE'::character varying, 'DATA_EXPORT'::character varying, 'DATA_DELETE'::character varying, 'CONSENT_CHANGE'::character varying])::text[]))),
-    CONSTRAINT security_events_severity_check CHECK (((severity)::text = ANY ((ARRAY['INFO'::character varying, 'WARNING'::character varying, 'ERROR'::character varying, 'CRITICAL'::character varying])::text[])))
+    CONSTRAINT security_events_event_type_check CHECK (((event_type)::text = ANY (ARRAY[('LOGIN_SUCCESS'::character varying)::text, ('LOGIN_FAILED'::character varying)::text, ('LOGOUT'::character varying)::text, ('PASSWORD_CHANGE'::character varying)::text, ('PASSWORD_RESET'::character varying)::text, ('TWO_FACTOR_ENABLED'::character varying)::text, ('TWO_FACTOR_DISABLED'::character varying)::text, ('TWO_FACTOR_FAILED'::character varying)::text, ('PERMISSION_CHANGE'::character varying)::text, ('ROLE_CHANGE'::character varying)::text, ('USER_LOCKED'::character varying)::text, ('USER_UNLOCKED'::character varying)::text, ('SUSPICIOUS_ACTIVITY'::character varying)::text, ('BRUTE_FORCE_ATTEMPT'::character varying)::text, ('API_ABUSE'::character varying)::text, ('DATA_EXPORT'::character varying)::text, ('DATA_DELETE'::character varying)::text, ('CONSENT_CHANGE'::character varying)::text]))),
+    CONSTRAINT security_events_severity_check CHECK (((severity)::text = ANY (ARRAY[('INFO'::character varying)::text, ('WARNING'::character varying)::text, ('ERROR'::character varying)::text, ('CRITICAL'::character varying)::text])))
 );
 
 
@@ -1940,7 +1981,7 @@ CREATE TABLE public.shop_operating_hours (
     closed boolean,
     day character varying(255),
     open_time character varying(255),
-    CONSTRAINT shop_operating_hours_day_check CHECK (((day)::text = ANY ((ARRAY['MONDAY'::character varying, 'TUESDAY'::character varying, 'WEDNESDAY'::character varying, 'THURSDAY'::character varying, 'FRIDAY'::character varying, 'SATURDAY'::character varying, 'SUNDAY'::character varying])::text[])))
+    CONSTRAINT shop_operating_hours_day_check CHECK (((day)::text = ANY (ARRAY[('MONDAY'::character varying)::text, ('TUESDAY'::character varying)::text, ('WEDNESDAY'::character varying)::text, ('THURSDAY'::character varying)::text, ('FRIDAY'::character varying)::text, ('SATURDAY'::character varying)::text, ('SUNDAY'::character varying)::text])))
 );
 
 
@@ -1966,7 +2007,7 @@ CREATE TABLE public.shop_stock (
     reorder_point numeric(10,2),
     status character varying(255),
     item_id uuid NOT NULL,
-    CONSTRAINT shop_stock_status_check CHECK (((status)::text = ANY ((ARRAY['NORMAL'::character varying, 'LOW'::character varying, 'CRITICAL'::character varying, 'OUT_OF_STOCK'::character varying, 'OVERSTOCKED'::character varying])::text[])))
+    CONSTRAINT shop_stock_status_check CHECK (((status)::text = ANY (ARRAY[('NORMAL'::character varying)::text, ('LOW'::character varying)::text, ('CRITICAL'::character varying)::text, ('OUT_OF_STOCK'::character varying)::text, ('OVERSTOCKED'::character varying)::text])))
 );
 
 
@@ -2018,7 +2059,7 @@ CREATE TABLE public.sms_configurations (
     from_number character varying(255),
     is_configured boolean,
     provider character varying(255),
-    CONSTRAINT sms_configurations_provider_check CHECK (((provider)::text = ANY ((ARRAY['TWILIO'::character varying, 'AWS_SNS'::character varying, 'VONAGE'::character varying, 'MESSAGEBIRD'::character varying])::text[])))
+    CONSTRAINT sms_configurations_provider_check CHECK (((provider)::text = ANY (ARRAY[('TWILIO'::character varying)::text, ('AWS_SNS'::character varying)::text, ('VONAGE'::character varying)::text, ('MESSAGEBIRD'::character varying)::text])))
 );
 
 
@@ -2046,8 +2087,8 @@ CREATE TABLE public.stock_alerts (
     status character varying(255) NOT NULL,
     suggested_order integer,
     item_id uuid NOT NULL,
-    CONSTRAINT stock_alerts_severity_check CHECK (((severity)::text = ANY ((ARRAY['INFO'::character varying, 'WARNING'::character varying, 'CRITICAL'::character varying])::text[]))),
-    CONSTRAINT stock_alerts_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'ACKNOWLEDGED'::character varying, 'RESOLVED'::character varying, 'IGNORED'::character varying])::text[])))
+    CONSTRAINT stock_alerts_severity_check CHECK (((severity)::text = ANY (ARRAY[('INFO'::character varying)::text, ('WARNING'::character varying)::text, ('CRITICAL'::character varying)::text]))),
+    CONSTRAINT stock_alerts_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('ACKNOWLEDGED'::character varying)::text, ('RESOLVED'::character varying)::text, ('IGNORED'::character varying)::text])))
 );
 
 
@@ -2073,8 +2114,8 @@ CREATE TABLE public.stock_requests (
     status character varying(255) NOT NULL,
     urgency character varying(255) NOT NULL,
     item_id uuid NOT NULL,
-    CONSTRAINT stock_requests_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'APPROVED'::character varying, 'REJECTED'::character varying, 'FULFILLED'::character varying, 'CANCELLED'::character varying])::text[]))),
-    CONSTRAINT stock_requests_urgency_check CHECK (((urgency)::text = ANY ((ARRAY['LOW'::character varying, 'NORMAL'::character varying, 'HIGH'::character varying])::text[])))
+    CONSTRAINT stock_requests_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('APPROVED'::character varying)::text, ('REJECTED'::character varying)::text, ('FULFILLED'::character varying)::text, ('CANCELLED'::character varying)::text]))),
+    CONSTRAINT stock_requests_urgency_check CHECK (((urgency)::text = ANY (ARRAY[('LOW'::character varying)::text, ('NORMAL'::character varying)::text, ('HIGH'::character varying)::text])))
 );
 
 
@@ -2105,7 +2146,7 @@ CREATE TABLE public.stock_transactions (
     type character varying(255) NOT NULL,
     unit_cost numeric(10,2),
     item_id uuid NOT NULL,
-    CONSTRAINT stock_transactions_type_check CHECK (((type)::text = ANY ((ARRAY['RECEIVED'::character varying, 'USED'::character varying, 'WASTED'::character varying, 'RETURNED'::character varying, 'TRANSFER_IN'::character varying, 'TRANSFER_OUT'::character varying, 'ADJUSTMENT'::character varying, 'COUNTED'::character varying])::text[])))
+    CONSTRAINT stock_transactions_type_check CHECK (((type)::text = ANY (ARRAY[('RECEIVED'::character varying)::text, ('USED'::character varying)::text, ('WASTED'::character varying)::text, ('RETURNED'::character varying)::text, ('TRANSFER_IN'::character varying)::text, ('TRANSFER_OUT'::character varying)::text, ('ADJUSTMENT'::character varying)::text, ('COUNTED'::character varying)::text])))
 );
 
 
@@ -2193,7 +2234,7 @@ CREATE TABLE public.time_entries (
     notes character varying(255),
     shift_id uuid,
     "timestamp" timestamp(6) without time zone NOT NULL,
-    CONSTRAINT time_entries_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['CLOCK_IN'::character varying, 'CLOCK_OUT'::character varying, 'BREAK_START'::character varying, 'BREAK_END'::character varying, 'SUSPEND'::character varying, 'RESUME'::character varying, 'AUTO_CLOSED'::character varying])::text[])))
+    CONSTRAINT time_entries_event_type_check CHECK (((event_type)::text = ANY (ARRAY[('CLOCK_IN'::character varying)::text, ('CLOCK_OUT'::character varying)::text, ('BREAK_START'::character varying)::text, ('BREAK_END'::character varying)::text, ('SUSPEND'::character varying)::text, ('RESUME'::character varying)::text, ('AUTO_CLOSED'::character varying)::text])))
 );
 
 
@@ -2219,7 +2260,7 @@ CREATE TABLE public.user_devices (
     os_version character varying(255),
     push_token character varying(255),
     user_id uuid NOT NULL,
-    CONSTRAINT user_devices_device_type_check CHECK (((device_type)::text = ANY ((ARRAY['ANDROID'::character varying, 'IOS'::character varying, 'WEB'::character varying, 'TABLET'::character varying, 'DESKTOP'::character varying])::text[])))
+    CONSTRAINT user_devices_device_type_check CHECK (((device_type)::text = ANY (ARRAY[('ANDROID'::character varying)::text, ('IOS'::character varying)::text, ('WEB'::character varying)::text, ('TABLET'::character varying)::text, ('DESKTOP'::character varying)::text])))
 );
 
 
@@ -2239,8 +2280,8 @@ CREATE TABLE public.user_notification_preferences (
     enabled boolean NOT NULL,
     notification_type character varying(255) NOT NULL,
     user_id uuid NOT NULL,
-    CONSTRAINT user_notification_preferences_channel_check CHECK (((channel)::text = ANY ((ARRAY['IN_APP'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'WHATSAPP'::character varying, 'PUSH'::character varying])::text[]))),
-    CONSTRAINT user_notification_preferences_notification_type_check CHECK (((notification_type)::text = ANY ((ARRAY['ORDER_STATUS'::character varying, 'PAYMENT'::character varying, 'REMINDER'::character varying, 'PROMOTION'::character varying, 'ALERT'::character varying, 'SYSTEM'::character varying, 'STOCK_REQUEST'::character varying])::text[])))
+    CONSTRAINT user_notification_preferences_channel_check CHECK (((channel)::text = ANY (ARRAY[('IN_APP'::character varying)::text, ('EMAIL'::character varying)::text, ('SMS'::character varying)::text, ('WHATSAPP'::character varying)::text, ('PUSH'::character varying)::text]))),
+    CONSTRAINT user_notification_preferences_notification_type_check CHECK (((notification_type)::text = ANY (ARRAY[('ORDER_STATUS'::character varying)::text, ('PAYMENT'::character varying)::text, ('REMINDER'::character varying)::text, ('PROMOTION'::character varying)::text, ('ALERT'::character varying)::text, ('SYSTEM'::character varying)::text, ('STOCK_REQUEST'::character varying)::text])))
 );
 
 
@@ -2887,22 +2928,6 @@ ALTER TABLE ONLY public.order_payments
 
 
 --
--- Name: payment_provider_configs payment_provider_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.payment_provider_configs
-    ADD CONSTRAINT payment_provider_configs_pkey PRIMARY KEY (id);
-
-
---
--- Name: payment_provider_configs uk_payment_provider_configs_business_provider; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.payment_provider_configs
-    ADD CONSTRAINT uk_payment_provider_configs_business_provider UNIQUE (business_id, provider);
-
-
---
 -- Name: order_timeline order_timeline_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2935,11 +2960,35 @@ ALTER TABLE ONLY public.payment_methods
 
 
 --
+-- Name: payment_provider_configs payment_provider_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_provider_configs
+    ADD CONSTRAINT payment_provider_configs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_reconciliation_items payment_reconciliation_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_reconciliation_items
+    ADD CONSTRAINT payment_reconciliation_items_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: permissions permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.permissions
     ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: platform_payment_provider_configs platform_payment_provider_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.platform_payment_provider_configs
+    ADD CONSTRAINT platform_payment_provider_configs_pkey PRIMARY KEY (id);
 
 
 --
@@ -3132,6 +3181,22 @@ ALTER TABLE ONLY public.corporate_accounts
 
 ALTER TABLE ONLY public.data_subject_requests
     ADD CONSTRAINT uk9s68e2mt0lakdwymsk7qtp2g5 UNIQUE (request_number);
+
+
+--
+-- Name: payment_provider_configs uk_payment_provider_configs_business_provider; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_provider_configs
+    ADD CONSTRAINT uk_payment_provider_configs_business_provider UNIQUE (business_id, provider);
+
+
+--
+-- Name: platform_payment_provider_configs uk_platform_payment_provider_configs_provider; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.platform_payment_provider_configs
+    ADD CONSTRAINT uk_platform_payment_provider_configs_provider UNIQUE (provider);
 
 
 --
@@ -4686,4 +4751,6 @@ ALTER TABLE ONLY public.stock_requests
 --
 -- PostgreSQL database dump complete
 --
+
+\unrestrict 5EgqTbEymbrfRg1hcho2M6xMgXroM1Cqa1qvfUPjfkTlFf9xzR89md4YRX6KMmD
 

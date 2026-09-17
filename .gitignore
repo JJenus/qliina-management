@@ -38,4 +38,6 @@ build/
 logs
 project_dump.txt
 note.txt
+alwaysdata-env.txt
+alwaysdata-note.txt
 *.py
