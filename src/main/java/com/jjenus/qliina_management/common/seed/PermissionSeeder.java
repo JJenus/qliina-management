@@ -103,6 +103,7 @@ public class PermissionSeeder implements CommandLineRunner {
         // Scoped GLOBAL (not BUSINESS) so tenant BUSINESS_ADMIN roles never inherit them.
         perm("platform.businesses.view",   "View All Businesses",       "List and view all businesses",           "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.businesses.manage", "Manage All Businesses",     "Update status and plan of businesses",   "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.businesses.purge",  "Erase Businesses",          "Consent-confirmed erasure of archived businesses", "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.plans.manage",      "Manage Subscription Plans", "CRUD subscription plan definitions",     "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.support.view",      "Support View",              "View operational data (masked PII)",     "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.billing.manage",    "Manage Billing",            "Manage plan tiers and trial extensions", "PLATFORM_ADMIN", "GLOBAL", false);

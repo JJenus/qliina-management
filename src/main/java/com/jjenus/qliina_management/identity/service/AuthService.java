@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -110,6 +111,10 @@ public class AuthService {
             return generateAuthResponse(user, ud);
         } catch (BadCredentialsException e) {
             handleFailedLogin(request.getUsername());
+            throw new BadCredentialsException("Invalid username or password");
+        } catch (DisabledException e) {
+            // Deactivated accounts (platform tenant-user deactivation) log in with
+            // the same 401 as bad credentials — no account-state leakage.
             throw new BadCredentialsException("Invalid username or password");
         }
     }

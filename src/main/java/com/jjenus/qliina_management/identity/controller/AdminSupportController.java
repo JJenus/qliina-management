@@ -147,8 +147,11 @@ public class AdminSupportController {
 
         Business business = businessRepository.findById(businessId)
                 .orElseThrow(() -> new BusinessException("Business not found", "BUSINESS_NOT_FOUND"));
-        if (business.getStatus() == Business.Status.CANCELLED) {
-            throw new BusinessException("Cannot impersonate into a cancelled business", "BUSINESS_CANCELLED");
+        if (business.getStatus() == Business.Status.CANCELLED
+                || business.getStatus() == Business.Status.ARCHIVED) {
+            throw new BusinessException(
+                    "Cannot impersonate into a " + business.getStatus().name().toLowerCase() + " business",
+                    "BUSINESS_" + business.getStatus().name());
         }
 
         User target = resolveTarget(businessId, body != null ? body.username() : null);

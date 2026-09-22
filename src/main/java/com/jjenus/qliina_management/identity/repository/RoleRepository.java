@@ -24,6 +24,11 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
     
     @Query("SELECT r FROM Role r WHERE r.businessId = :businessId AND r.type = 'CUSTOM'")
     Page<Role> findCustomRoles(@Param("businessId") UUID businessId, Pageable pageable);
-    
+
+    /** Enabled BUSINESS_ADMIN assignments for a business (used for the last-admin guard). */
+    @Query("SELECT count(ur) FROM UserRole ur WHERE ur.businessId = :businessId "
+            + "AND ur.role.name = 'BUSINESS_ADMIN' AND ur.user.enabled = true")
+    long countActiveBusinessAdmins(@Param("businessId") UUID businessId);
+
     Boolean existsByName(String name);
 }

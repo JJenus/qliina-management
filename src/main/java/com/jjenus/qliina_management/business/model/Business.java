@@ -92,7 +92,9 @@ public class Business extends BaseEntity {
      *   SUSPENDED – temporarily disabled (non-payment / policy violation).
      *   CANCELLED – permanently closed; data retained per retention policy.
      */
-    public enum Status { TRIAL, ACTIVE, SUSPENDED, CANCELLED }
+    /** Lifecycle states. ARCHIVED is terminal-ish: the soft-archive step before
+     *  consent-confirmed erasure (restorable to ACTIVE, cannot be cancelled). */
+    public enum Status { TRIAL, ACTIVE, SUSPENDED, CANCELLED, ARCHIVED }
 
     /**
      * Feature / pricing tier:

@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -246,6 +247,66 @@ public class UserService {
             .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
         user.setEnabled(true);
         userRepository.save(user);
+    }
+
+    // -----------------------------------------------------------------------
+    // Platform-admin actions on tenant users (N-4) — the caller is a platform
+    // staff member; the target must belong to the given business.
+    // -----------------------------------------------------------------------
+
+    @Transactional
+    public void platformDeactivateUser(UUID businessId, UUID userId) {
+        User user = requireTenantUser(businessId, userId);
+        if (isBusinessAdmin(user, businessId) && roleRepository.countActiveBusinessAdmins(businessId) <= 1) {
+            throw new BusinessException(
+                    "Cannot deactivate the last active admin of the business",
+                    "LAST_ADMIN", "userId");
+        }
+        user.setEnabled(false);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void platformActivateUser(UUID businessId, UUID userId) {
+        User user = requireTenantUser(businessId, userId);
+        user.setEnabled(true);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public Map<String, Object> platformForcePasswordReset(UUID businessId, UUID userId) {
+        User user = requireTenantUser(businessId, userId);
+        String tempPassword = UUID.randomUUID().toString().substring(0, 12) + "Aa1!";
+        AuthAccount account = user.getAuthAccount();
+        if (account == null) {
+            account = new AuthAccount();
+            account.setUser(user);
+            account.setFailedAttempts(0);
+        }
+        account.setPasswordHash(passwordEncoder.encode(tempPassword));
+        account.setPasswordLastChanged(LocalDateTime.now());
+        account.setLockedUntil(null);
+        account.setFailedAttempts(0);
+        authAccountRepository.save(account);
+        return Map.of(
+                "userId", userId,
+                "username", user.getUsername(),
+                "temporaryPassword", tempPassword);
+    }
+
+    private User requireTenantUser(UUID businessId, UUID userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException("User not found", "USER_NOT_FOUND"));
+        if (!businessId.equals(user.getBusinessId())) {
+            throw new BusinessException("User does not belong to this business", "USER_NOT_IN_BUSINESS", "userId");
+        }
+        return user;
+    }
+
+    private boolean isBusinessAdmin(User user, UUID businessId) {
+        return user.getRoles().stream()
+            .anyMatch(ur -> businessId.equals(ur.getBusinessId())
+                    && "BUSINESS_ADMIN".equals(ur.getRole().getName()));
     }
     
     @Transactional(readOnly = true)

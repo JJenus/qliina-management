@@ -216,6 +216,7 @@ public class RoleSeeder implements CommandLineRunner {
         // PLATFORM_ADMIN — full day-to-day platform operations
         grantIfMissing("PLATFORM_ADMIN", "platform.stats.view");
         grantIfMissing("PLATFORM_ADMIN", "platform.users.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.businesses.purge");
         grantIfMissing("PLATFORM_ADMIN", "platform.settings.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.payments.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.notifications.manage");
