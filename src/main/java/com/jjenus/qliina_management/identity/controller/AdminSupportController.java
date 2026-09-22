@@ -4,6 +4,7 @@ import com.jjenus.qliina_management.audit.service.AuditService;
 import com.jjenus.qliina_management.business.model.Business;
 import com.jjenus.qliina_management.business.repository.BusinessRepository;
 import com.jjenus.qliina_management.common.BusinessException;
+import com.jjenus.qliina_management.common.MaskingUtils;
 import com.jjenus.qliina_management.identity.model.User;
 import com.jjenus.qliina_management.identity.repository.UserRepository;
 import com.jjenus.qliina_management.identity.security.CustomUserDetailsService;
@@ -71,14 +72,15 @@ public class AdminSupportController {
         }, PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
 
         var usersPage = userRepository.searchTenantUsers(term, PageRequest.of(0, 10));
+        boolean maskPii = "SUPPORT_AGENT".equals(dominantPlatformRole());
         List<Map<String, Object>> users = usersPage.getContent().stream()
                 .map(u -> {
                     Map<String, Object> m = new HashMap<>();
                     m.put("id", u.getId());
                     m.put("username", u.getUsername());
-                    m.put("email", u.getEmail());
-                    m.put("firstName", u.getFirstName());
-                    m.put("lastName", u.getLastName());
+                    m.put("email", maskPii ? MaskingUtils.maskEmail(u.getEmail()) : u.getEmail());
+                    m.put("firstName", maskPii ? MaskingUtils.maskName(u.getFirstName()) : u.getFirstName());
+                    m.put("lastName", maskPii ? MaskingUtils.maskName(u.getLastName()) : u.getLastName());
                     m.put("enabled", u.getEnabled());
                     m.put("businessId", u.getBusinessId());
                     m.put("roles", u.getRoles().stream().map(ur -> ur.getRole().getName()).toList());
@@ -113,14 +115,15 @@ public class AdminSupportController {
         if (!businessRepository.existsById(businessId)) {
             throw new BusinessException("Business not found", "BUSINESS_NOT_FOUND");
         }
+        boolean maskPii = "SUPPORT_AGENT".equals(dominantPlatformRole());
         List<Map<String, Object>> users = userRepository.findAllByBusinessId(businessId).stream()
                 .map(u -> {
                     Map<String, Object> m = new HashMap<>();
                     m.put("id", u.getId());
                     m.put("username", u.getUsername());
-                    m.put("email", u.getEmail());
-                    m.put("firstName", u.getFirstName());
-                    m.put("lastName", u.getLastName());
+                    m.put("email", maskPii ? MaskingUtils.maskEmail(u.getEmail()) : u.getEmail());
+                    m.put("firstName", maskPii ? MaskingUtils.maskName(u.getFirstName()) : u.getFirstName());
+                    m.put("lastName", maskPii ? MaskingUtils.maskName(u.getLastName()) : u.getLastName());
                     m.put("enabled", u.getEnabled());
                     m.put("lastLogin", u.getLastLogin() != null ? u.getLastLogin().toString() : null);
                     m.put("roles", u.getRoles().stream().map(ur -> ur.getRole().getName()).toList());
@@ -226,5 +229,25 @@ public class AdminSupportController {
         var auth = org.springframework.security.core.context.SecurityContextHolder
                 .getContext().getAuthentication();
         return auth != null ? auth.getName() : "unknown";
+    }
+
+    /**
+     * Returns the caller's most privileged platform role, or READONLY_AUDITOR
+     * as a fallback. Used to decide whether tenant PII is masked in support
+     * responses (SUPPORT_AGENT gets masked PII, mirrors AdminBusinessController).
+     */
+    private String dominantPlatformRole() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (auth == null) return "READONLY_AUDITOR";
+        User user = userRepository.findByUsername(auth.getName()).orElse(null);
+        if (user == null) return "READONLY_AUDITOR";
+        List<String> ordered = List.of("SUPER_ADMIN", "PLATFORM_ADMIN", "BILLING_ADMIN",
+                "SUPPORT_AGENT", "READONLY_AUDITOR");
+        return user.getRoles().stream()
+                .map(ur -> ur.getRole().getName())
+                .filter(ordered::contains)
+                .findFirst()
+                .orElse("READONLY_AUDITOR");
     }
 }

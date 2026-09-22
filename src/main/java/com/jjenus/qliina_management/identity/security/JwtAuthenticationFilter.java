@@ -51,7 +51,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-                if (jwtProvider.isTokenValid(jwt, userDetails)) {
+                // isEnabled() rejects tokens minted before a user was deactivated —
+                // CustomUserDetailsService maps disabled users to disabled UserDetails.
+                if (jwtProvider.isTokenValid(jwt, userDetails) && userDetails.isEnabled()) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,

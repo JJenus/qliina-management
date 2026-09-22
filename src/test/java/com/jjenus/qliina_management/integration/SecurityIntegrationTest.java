@@ -7,9 +7,11 @@ import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -179,13 +181,73 @@ class SecurityIntegrationTest extends BaseIntegrationTest {
         AuthContext ctx = registerBusinessAndOwner();
         String admin = adminToken();
         ResultActions suspend = patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
-                admin, Map.of("status", "SUSPENDED"));
+                admin, Map.of("status", "SUSPENDED", "reason", "Compliance review"));
         suspend.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUSPENDED"));
         patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
-                admin, Map.of("status", "TRIAL"))
+                admin, Map.of("status", "ACTIVE", "reason", "Issues resolved"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("TRIAL"));
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void superAdmin_suspendingOrCancellingRequiresReason() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String admin = adminToken();
+        ResultActions suspend = patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
+                admin, Map.of("status", "SUSPENDED"));
+        assertProblemDetail(suspend, 400, "VALIDATION_ERROR");
+        suspend.andExpect(jsonPath("$.field").value("reason"));
+        assertProblemDetail(patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
+                admin, Map.of("status", "CANCELLED")), 400, "VALIDATION_ERROR");
+    }
+
+    @Test
+    void superAdmin_cannotTransitionOutOfCancelled() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String admin = adminToken();
+        patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
+                admin, Map.of("status", "CANCELLED", "reason", "Business closed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        // CANCELLED is terminal — the same state is a no-op, anything else is rejected.
+        patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
+                admin, Map.of("status", "CANCELLED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        assertProblemDetail(patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status",
+                admin, Map.of("status", "ACTIVE")), 400, "INVALID_STATUS_TRANSITION");
+    }
+
+    @Test
+    void deactivatedUsersExistingToken_isRejected() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        String uname = "deact_" + random();
+        Map<String, Object> body = new HashMap<>();
+        body.put("username", uname);
+        body.put("email", uname + "@test.com");
+        body.put("phone", "+1" + (555_700_0000L + counter.incrementAndGet()));
+        body.put("firstName", "Soon");
+        body.put("lastName", "Gone");
+        body.put("password", DEFAULT_PASSWORD);
+        body.put("confirmPassword", DEFAULT_PASSWORD);
+        MvcResult res = post("/api/v1/" + ctx.businessId() + "/users", ctx.accessToken(), body)
+                .andExpect(status().isOk()).andReturn();
+        UUID userId = extractUuid(res, "$.id");
+
+        String staffToken = loginToken(uname, DEFAULT_PASSWORD);
+        get("/api/v1/users/me", staffToken).andExpect(status().isOk());
+
+        assertSuccess(delete("/api/v1/" + ctx.businessId() + "/users/" + userId, ctx.accessToken()),
+                "User deactivated successfully");
+
+        // The token minted before deactivation must no longer authenticate.
+        get("/api/v1/users/me", staffToken).andExpect(status().isUnauthorized());
+
+        // And re-activating restores it (picker: token is re-minted on login).
+        assertSuccess(patch("/api/v1/" + ctx.businessId() + "/users/" + userId + "/activate",
+                ctx.accessToken(), null), "User activated successfully");
+        get("/api/v1/users/me", loginToken(uname, DEFAULT_PASSWORD)).andExpect(status().isOk());
     }
 
     // ---------------------------------------------------------------------

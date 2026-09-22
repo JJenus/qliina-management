@@ -480,6 +480,50 @@ CREATE TABLE public.businesses (
 
 
 --
+-- Name: complaints; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.complaints (
+    id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    created_by uuid,
+    updated_at timestamp(6) without time zone,
+    updated_by uuid,
+    version bigint,
+    business_id uuid NOT NULL,
+    shop_id uuid,
+    category character varying(30) NOT NULL,
+    complaint_number character varying(30) NOT NULL,
+    customer_name character varying(255) NOT NULL,
+    description text NOT NULL,
+    resolution_note text,
+    resolved_at timestamp(6) without time zone,
+    resolved_by uuid,
+    severity character varying(30) NOT NULL,
+    sla_due_at timestamp(6) without time zone NOT NULL,
+    status character varying(30) NOT NULL,
+    CONSTRAINT complaints_category_check CHECK (((category)::text = ANY (ARRAY[('SERVICE'::character varying)::text, ('QUALITY'::character varying)::text, ('BILLING'::character varying)::text, ('DELIVERY'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT complaints_severity_check CHECK (((severity)::text = ANY (ARRAY[('LOW'::character varying)::text, ('MEDIUM'::character varying)::text, ('HIGH'::character varying)::text, ('URGENT'::character varying)::text]))),
+    CONSTRAINT complaints_status_check CHECK (((status)::text = ANY (ARRAY[('OPEN'::character varying)::text, ('IN_REVIEW'::character varying)::text, ('RESOLVED'::character varying)::text, ('REJECTED'::character varying)::text]))),
+    CONSTRAINT complaints_pkey PRIMARY KEY (id)
+);
+
+
+--
+-- Name: idx_complaint_business_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_complaint_business_created ON public.complaints USING btree (business_id, created_at);
+
+
+--
+-- Name: idx_complaint_business_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_complaint_business_status ON public.complaints USING btree (business_id, status);
+
+
+--
 -- Name: cash_drawer_sessions; Type: TABLE; Schema: public; Owner: -
 --
 

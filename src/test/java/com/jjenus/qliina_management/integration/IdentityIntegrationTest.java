@@ -476,6 +476,41 @@ class IdentityIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void supportAgent_searchAndTenantUsers_maskPii() throws Exception {
+        AuthContext ctx = registerBusinessAndOwner();
+        // A real staff member with identifiable PII.
+        String staffUser = "mask_" + random();
+        String staffEmail = "maskme_" + random() + "@test.com";
+        post("/api/v1/" + ctx.businessId() + "/users", ctx.accessToken(),
+                createUserBody(staffUser, staffEmail, newPhone(), DEFAULT_PASSWORD, DEFAULT_PASSWORD))
+                .andExpect(status().isOk());
+
+        String uname = "sagent_" + random();
+        post("/api/v1/admin/platform-users", adminToken(), inviteBody(uname))
+                .andExpect(status().isOk());
+        String agent = loginToken(uname, "Temp@12345");
+
+        // SUPPORT_AGENT sees masked PII in global search... (m***@t***.com / N*** E***)
+        get("/api/v1/admin/search?q=" + staffUser, agent)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.users[0].username").value(staffUser))
+                .andExpect(jsonPath("$.users[0].email").value("m***@t***.com"))
+                .andExpect(jsonPath("$.users[0].firstName").value("N***"))
+                .andExpect(jsonPath("$.users[0].lastName").value("E***"))
+                .andExpect(jsonPath("$.users[0].enabled").value(true));
+        // ...and in the business tenant list.
+        get("/api/v1/admin/businesses/" + ctx.businessId() + "/users", agent)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username=='" + staffUser + "')].email").value("m***@t***.com"))
+                .andExpect(jsonPath("$[?(@.username=='" + staffUser + "')].firstName").value("N***"));
+
+        // Platform admins / support supervisors still see full PII.
+        get("/api/v1/admin/businesses/" + ctx.businessId() + "/users", adminToken())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username=='" + staffUser + "')].email").value(staffEmail));
+    }
+
+    @Test
     void invitePlatformUser_invalidRole() throws Exception {
         Map<String, Object> body = inviteBody("inv_" + random());
         body.put("role", "SUPER_ADMIN");

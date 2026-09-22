@@ -42,6 +42,7 @@ public class RoleSeeder implements CommandLineRunner {
         createRoles();
         ensureWorkerInventoryPermissions();
         ensurePlatformRolePermissions();
+        ensureComplaintPermissions();
     }
 
     private void createRoles() {
@@ -82,7 +83,9 @@ public class RoleSeeder implements CommandLineRunner {
                      // Employee management (full control)
                      "employee.view", "employee.clock", "employee.manage",
                      // User management (can view users)
-                     "user.view"
+                     "user.view",
+                     // Complaints (full tenant complaint handling)
+                     "complaint.view", "complaint.create", "complaint.resolve"
              ))));
 
         // FRONT_DESK - Order intake, payments, and customer service
@@ -99,7 +102,9 @@ public class RoleSeeder implements CommandLineRunner {
                      // Notifications
                      "notification.view", "notification.update",
                      // Employee (own clock-in and view)
-                     "employee.clock", "employee.view"
+                     "employee.clock", "employee.view",
+                     // Complaints (log and track)
+                     "complaint.view", "complaint.create"
              ))));
 
         // WASHER - Laundry technicians
@@ -151,13 +156,15 @@ public class RoleSeeder implements CommandLineRunner {
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
                      "platform.businesses.view", "platform.businesses.manage",
                      "platform.plans.manage", "platform.billing.manage", "platform.audit.view",
-                     "platform.payments.manage"
+                     "platform.payments.manage", "platform.support.view",
+                     "platform.complaints.view", "platform.complaints.manage"
              ))));
 
         // SUPPORT_AGENT - operational view with masked PII, read-only
         roleIfAbsent("SUPPORT_AGENT", "Support agent — masked read-only operational data", Role.RoleType.PLATFORM, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "platform.businesses.view", "platform.support.view"
+                     "platform.businesses.view", "platform.support.view",
+                     "platform.complaints.view"
              ))));
 
         // BILLING_ADMIN - plan and trial management only
@@ -169,7 +176,8 @@ public class RoleSeeder implements CommandLineRunner {
         // READONLY_AUDITOR - full read-only access for compliance
         roleIfAbsent("READONLY_AUDITOR", "Read-only auditor — compliance read access", Role.RoleType.PLATFORM, true, now,
              new HashSet<>(permissionRepository.findByNameIn(Arrays.asList(
-                     "platform.businesses.view", "platform.audit.view"
+                     "platform.businesses.view", "platform.audit.view",
+                     "platform.complaints.view"
              ))));
 
         log.info("Created {} roles.", roleRepository.count());
@@ -213,6 +221,22 @@ public class RoleSeeder implements CommandLineRunner {
         grantIfMissing("PLATFORM_ADMIN", "platform.notifications.manage");
         grantIfMissing("PLATFORM_ADMIN", "platform.impersonate");
         grantIfMissing("PLATFORM_ADMIN", "platform.coupons.manage");
+        grantIfMissing("PLATFORM_ADMIN", "platform.support.view");
+
+        // SUPER_ADMIN / BUSINESS_ADMIN are created with "all (business) permissions at
+        // that time"; new permissions added later must be topped up here too.
+
+        // BUSINESS_ADMIN — keep parity with the "all BUSINESS + SHOP scope" contract.
+        roleRepository.findByName("BUSINESS_ADMIN").ifPresent(role -> {
+            Set<String> have = role.getPermissions().stream()
+                    .map(Permission::getName).collect(Collectors.toSet());
+            permissionRepository.findByScopeIn(Arrays.asList(
+                            Permission.PermissionScope.BUSINESS, Permission.PermissionScope.SHOP))
+                    .forEach(p -> {
+                        if (have.add(p.getName())) role.getPermissions().add(p);
+                    });
+            roleRepository.save(role);
+        });
 
         // SUPPORT_AGENT — operational stats visibility for support work
         grantIfMissing("SUPPORT_AGENT", "platform.stats.view");
@@ -224,6 +248,26 @@ public class RoleSeeder implements CommandLineRunner {
         // READONLY_AUDITOR — read-only stats + audit export for compliance
         grantIfMissing("READONLY_AUDITOR", "platform.stats.view");
         grantIfMissing("READONLY_AUDITOR", "platform.audit.export");
+    }
+
+    /**
+     * Idempotent top-up for complaint permissions on databases created before
+     * the complaints domain existed (createRoles() only runs once per database).
+     */
+    private void ensureComplaintPermissions() {
+        // FRONT_DESK — log and track complaints
+        grantIfMissing("FRONT_DESK", "complaint.view");
+        grantIfMissing("FRONT_DESK", "complaint.create");
+        // SHOP_MANAGER — full tenant complaint handling
+        grantIfMissing("SHOP_MANAGER", "complaint.view");
+        grantIfMissing("SHOP_MANAGER", "complaint.create");
+        grantIfMissing("SHOP_MANAGER", "complaint.resolve");
+        // Platform staff — cross-tenant inbox
+        grantIfMissing("PLATFORM_ADMIN", "platform.complaints.view");
+        grantIfMissing("PLATFORM_ADMIN", "platform.complaints.manage");
+        // SUPPORT_AGENT / READONLY_AUDITOR — view-only complaints
+        grantIfMissing("SUPPORT_AGENT", "platform.complaints.view");
+        grantIfMissing("READONLY_AUDITOR", "platform.complaints.view");
     }
 
     private void grantIfMissing(String roleName, String permissionName) {

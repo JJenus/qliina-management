@@ -121,6 +121,21 @@ public class AdminBusinessController {
     // Change status (suspend / activate / cancel)
     // -----------------------------------------------------------------------
 
+    /** Valid transitions per current status. Same-status is a no-op (idempotent). */
+    private static final Map<Business.Status, List<Business.Status>> STATUS_TRANSITIONS = Map.of(
+            Business.Status.TRIAL,     List.of(Business.Status.TRIAL, Business.Status.ACTIVE,
+                    Business.Status.SUSPENDED, Business.Status.CANCELLED),
+            Business.Status.ACTIVE,    List.of(Business.Status.ACTIVE,
+                    Business.Status.SUSPENDED, Business.Status.CANCELLED),
+            Business.Status.SUSPENDED, List.of(Business.Status.SUSPENDED,
+                    Business.Status.ACTIVE, Business.Status.CANCELLED),
+            // CANCELLED is terminal — no transitions out.
+            Business.Status.CANCELLED, List.of(Business.Status.CANCELLED));
+
+    /** States that require a human-readable reason (captured by the audit AOP). */
+    private static final List<Business.Status> REASON_REQUIRED =
+            List.of(Business.Status.SUSPENDED, Business.Status.CANCELLED);
+
     @PatchMapping("/{businessId}/status")
     @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
     public ResponseEntity<BusinessDTO> changeStatus(
@@ -135,9 +150,26 @@ public class AdminBusinessController {
         }
         Business b = businessRepository.findById(businessId)
                 .orElseThrow(() -> new BusinessException("Business not found", "BUSINESS_NOT_FOUND"));
+
+        Business.Status current = b.getStatus() != null ? b.getStatus() : Business.Status.TRIAL;
+        if (!STATUS_TRANSITIONS.getOrDefault(current, List.of()).contains(status)) {
+            throw new BusinessException(
+                    "Cannot transition business from " + current + " to " + status,
+                    "INVALID_STATUS_TRANSITION", "status");
+        }
+        // Same-status is an idempotent no-op and needs no reason (business is already there).
+        if (status == current) {
+            return ResponseEntity.ok(toDTO(b));
+        }
+        if (REASON_REQUIRED.contains(status) && (body.get("reason") == null || body.get("reason").isBlank())) {
+            throw new BusinessException("'reason' is required for " + status + " status", "VALIDATION_ERROR", "reason");
+        }
+
         b.setStatus(status);
         businessRepository.save(b);
-        log.info("Status changed: businessId={}, newStatus={}", businessId, status);
+        // Reason is intentionally surfaced via AuditAspect args (the PATCH body); log it too.
+        log.info("Status changed: businessId={}, newStatus={}, reason={}",
+                businessId, status, body.getOrDefault("reason", ""));
         return ResponseEntity.ok(toDTO(b));
     }
 
@@ -187,10 +219,7 @@ public class AdminBusinessController {
     public record UpdateBusinessRequest(String name, String email, String phone) {}
 
     @PutMapping("/{businessId}")
-    @PreAuthorize("""
-        hasPermission(null, 'PLATFORM', 'platform.businesses.manage')
-        or hasPermission(null, 'PLATFORM', 'platform.support.view')
-    """)
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'platform.businesses.manage')")
     public ResponseEntity<BusinessDTO> updateBusiness(
             @PathVariable UUID businessId,
             @RequestBody UpdateBusinessRequest body) {

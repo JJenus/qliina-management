@@ -116,6 +116,15 @@ public class PermissionSeeder implements CommandLineRunner {
         perm("platform.impersonate",       "Impersonate Tenant Users",  "Login as a tenant user for support",     "PLATFORM_ADMIN", "GLOBAL", false);
         perm("platform.audit.export",      "Export Audit Logs",         "Export audit logs for compliance",       "PLATFORM_ADMIN", "GLOBAL", false);
 
+        // Complaints / support tickets
+        // Business-scope perms let BUSINESS_ADMIN (all BUSINESS+SHOP perms) inherit them
+        // automatically; GLOBAL-scope perms stay platform-staff-only.
+        perm("complaint.view",        "View Complaints",        "View and track customer complaints and support tickets", "CUSTOMER_SERVICE", "BUSINESS", true);
+        perm("complaint.create",      "Create Complaints",      "Log customer complaints and support tickets",            "CUSTOMER_SERVICE", "BUSINESS", true);
+        perm("complaint.resolve",     "Resolve Complaints",     "Resolve or reject complaints",                           "CUSTOMER_SERVICE", "BUSINESS", false);
+        perm("platform.complaints.view",   "View All Complaints",   "View complaints across all businesses",      "PLATFORM_ADMIN", "GLOBAL", false);
+        perm("platform.complaints.manage", "Manage All Complaints", "Triage and resolve complaints platform-wide", "PLATFORM_ADMIN", "GLOBAL", false);
+
         log.info("Permissions check complete. Total: {}", permissionRepository.count());
     }
 

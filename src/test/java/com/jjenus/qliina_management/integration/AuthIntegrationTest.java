@@ -246,7 +246,8 @@ class AuthIntegrationTest extends BaseIntegrationTest {
     void login_blockedWhenBusinessSuspended() throws Exception {
         AuthContext ctx = registerBusinessAndOwner();
         String admin = adminToken();
-        patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status", admin, Map.of("status", "SUSPENDED"))
+        patch("/api/v1/admin/businesses/" + ctx.businessId() + "/status", admin,
+                Map.of("status", "SUSPENDED", "reason", "Suspended for login-block test"))
                 .andExpect(status().isOk());
         assertProblemDetail(post("/api/v1/auth/login", null, Map.of(
                 "username", ctx.username(),
